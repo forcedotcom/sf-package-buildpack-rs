@@ -1,0 +1,26 @@
+[package]
+name = "sf-package-buildpack"
+version = "0.0.0"
+edition = "2018"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1"
+libcnb = "0.2"
+reqwest = { version = "0.11", features = ["blocking"] }
+serde = { version = "1.0", features = ["derive"] }
+sha2 = "0.9"
+termcolor = "1.1"
+toml = "0.5"
+xz = "0.1.0"
+tar = "0.4"
+json = "0.12"
+thiserror = "1.0"
+walkdir = "2.3.2"
+regex = "1.5.4"
+
+[dev-dependencies]
+assert_matches = "1.5.0"
+tempfile = "^3.2.0"
