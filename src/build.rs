@@ -29,7 +29,9 @@ pub fn build(
 ) -> Result<(), libcnb::Error<anyhow::Error>> {
     let mut logger = BuildLogger::new(true);
 
-    log_info(&mut logger, "---> Initializing buildpack");
+    log_header(&mut logger, "---> Adding buildpack layers");
+
+    log_info(&mut logger, "---> Layering sfdx");
     require_sfdx(&context)?;
 
     let lifecycle_mode = env::var("CNB_LIFECYCLE_MODE")
@@ -53,6 +55,8 @@ pub fn build(
             let scratch_org_duration = 1;
 
             log_header(&mut logger, "---> Creating environment");
+
+            log_info(&mut logger, "---> Creating scratch org");
             match sfdx_create_org(
                 app_dir.clone(),
                 devhub_alias,
@@ -69,6 +73,8 @@ pub fn build(
             }
 
             log_header(&mut logger, "---> Preparing artifacts");
+
+            log_info(&mut logger, "---> Pushing source code");
             match sfdx_push_source(app_dir.clone(), scratch_org_alias, 120) {
                 Ok(output) => log_output(&mut logger, "preparing artifacts", output),
                 Err(e) => {
@@ -77,8 +83,10 @@ pub fn build(
                 }
             }
 
+            log_header(&mut logger, "---> Running tests");
+
             if find_one_apex_test(&app_dir) {
-                log_header(&mut logger, "---> Running tests");
+                log_info(&mut logger, "---> Running apex tests");
                 match sfdx_test_apex(
                     app_dir.clone(),
                     scratch_org_alias,
@@ -141,6 +149,8 @@ fn reset_environment(
     scratch_org_alias: &str,
 ) {
     log_header(&mut logger, "---> Resetting environment");
+
+    log_info(&mut logger, "---> Deleting scratch org");
     let output = sfdx_delete_org(app_dir, devhub_alias, scratch_org_alias).unwrap();
     log_output(&mut logger, "resetting environment", output);
 }
@@ -157,7 +167,7 @@ fn log_output(logger: &mut BuildLogger, header: &str, output: Output) {
     let status = output.status;
     if !&output.stdout.is_empty() {
         logger
-            .debug(format!("---> {}", String::from_utf8_lossy(&output.stdout)))
+            .info(format!("---> {}", String::from_utf8_lossy(&output.stdout)))
             .unwrap();
     }
     if !&output.stderr.is_empty() {
@@ -185,6 +195,7 @@ use crate::util::files::find_one_file;
 use crate::util::logger::{BuildLogger, Logger};
 use std::{error, env};
 use std::fmt;
+use std::io::{BufReader, BufRead};
 
 impl fmt::Display for BuildError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -275,28 +286,32 @@ fn sfdx_push_source(
     wait_seconds: i32,
 ) -> Result<Output, anyhow::Error> {
     let mut cmd = Command::new("sfdx");
-    cmd.current_dir(app_dir)
+    let mut child = cmd.current_dir(app_dir)
         .arg("force:source:push")
         .arg("-u")
         .arg(scratch_org_alias)
         .arg("-w")
-        .arg(wait_seconds.to_string());
-    match cmd.output() {
-        Ok(output) => {
-            let status = output.status.code().unwrap();
-            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
-            if status != 0 {
-                return Err(anyhow::Error::new(BuildError(format!(
-                    "failed to push source to {}:\n {}",
-                    scratch_org_alias, stderr
-                ))));
-            }
-            Ok(output)
-        }
-        Err(e) => {
-            print!("failed to push source to {}", scratch_org_alias);
-            Err(anyhow::Error::new(e))
-        }
+        .arg(wait_seconds.to_string())
+        .spawn()
+        .expect("failed to execute child");
+
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
+        reader
+            .lines()
+            .filter_map(|line| line.ok())
+            .for_each(|line| eprintln!("{}", line));
+    }
+
+    let output = child.wait_with_output()
+        .expect("failed to wait on child");
+    if output.status.success() {
+        Ok(output)
+    } else {
+        Err(anyhow::Error::new(BuildError(format!(
+                "failed to push source to {}:\n Exited with {}",
+                scratch_org_alias, output.status.code().unwrap()
+            ))))
     }
 }
 
