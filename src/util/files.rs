@@ -48,9 +48,9 @@ fn contains<P: AsRef<Path>>(src: P, pat: &Regex) -> Option<bool> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use std::io::Write;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
-    use std::io::Write;
 
     pub fn write_file(ignored_content: &str, f: &PathBuf) -> anyhow::Result<(), anyhow::Error> {
         match File::create(f) {

@@ -1,5 +1,4 @@
 pub mod config;
-pub mod error;
+pub mod logger;
 pub mod fetch;
 pub mod files;
-pub mod logger;

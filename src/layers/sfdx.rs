@@ -1,26 +1,29 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Error;
 use libcnb::data::layer_content_metadata::LayerContentMetadata;
 use libcnb::layer_lifecycle::{LayerLifecycle, ValidateResult};
 use libcnb::{BuildContext, GenericPlatform};
 use std::env;
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Output};
 
-use crate::data::buildpack_toml::{Docker, Release, SFPackageBuildpackMetadata};
-use crate::data::Runtime;
+use crate::base::SFPackageBuildpackMetadata;
+use crate::base::SFDXRuntime;
+
 use crate::util::fetch::{extract, get};
 
 pub struct SFDXLayerLifecycle;
 
 impl
-    LayerLifecycle<
-        GenericPlatform,
-        SFPackageBuildpackMetadata,
-        SFPackageBuildpackMetadata,
-        HashMap<String, String>,
-        anyhow::Error,
-    > for SFDXLayerLifecycle
+LayerLifecycle<
+    GenericPlatform,
+    SFPackageBuildpackMetadata,
+    SFPackageBuildpackMetadata,
+    HashMap<String, String>,
+    anyhow::Error,
+> for SFDXLayerLifecycle
 {
     fn create(
         &self,
@@ -33,12 +36,12 @@ impl
             Some("sfdx/"),
         )?;
 
-        Ok(LayerContentMetadata {
-            launch: true,
-            build: false,
-            cache: true,
-            metadata: SFPackageBuildpackMetadata {
-                runtime: Runtime {
+        Ok(LayerContentMetadata::default()
+            .build(false)
+            .cache(true)
+            .launch(true)
+            .metadata(SFPackageBuildpackMetadata {
+                runtime: SFDXRuntime {
                     url: build_context
                         .buildpack_descriptor
                         .metadata
@@ -53,13 +56,7 @@ impl
                         .clone(),
                     sha256: runtime_sha256.clone(),
                 },
-                release: Release {
-                    docker: Docker {
-                        repository: "".to_string(),
-                    },
-                },
-            },
-        })
+            }))
     }
 
     fn validate(
@@ -104,6 +101,179 @@ impl
         );
 
         Ok(layer_env)
+    }
+}
+
+pub fn sfdx_check_org(
+    app_dir: &PathBuf,
+    scratch_org_alias: &str,
+) -> Result<bool, anyhow::Error> {
+    let mut cmd = Command::new("sfdx");
+    let result = cmd.current_dir(app_dir)
+        .args(vec!["force:org:display", "-u", scratch_org_alias])
+        .output();
+
+    if let Ok(output) = result {
+        if let Some(code) = output.status.code() {
+            if !output.stdout.is_empty() {
+                println!("{}", String::from_utf8(output.stdout)?);
+            }
+            if !output.stderr.is_empty() {
+                println!("{}", String::from_utf8(output.stderr)?);
+            }
+
+            return Ok(code == 0);
+        }
+    }
+    Ok(false)
+}
+
+pub fn sfdx_create_org(
+    app_dir: &PathBuf,
+    devhub_alias: &str,
+    scratch_org_def_path: &str,
+    scratch_org_duration: i32,
+    scratch_org_alias: &str,
+) -> Result<Output, anyhow::Error> {
+    let mut cmd = Command::new("sfdx");
+    cmd.current_dir(app_dir)
+        .arg("force:org:create")
+        .arg("-v")
+        .arg(devhub_alias)
+        .arg("-f")
+        .arg(scratch_org_def_path)
+        .arg("-d")
+        .arg(scratch_org_duration.to_string())
+        .arg("-a")
+        .arg(scratch_org_alias);
+    match cmd.output() {
+        Ok(output) => {
+            let status = output.status.code().unwrap();
+            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
+            if status != 0 {
+                Err(anyhow::anyhow!(
+                    "failed to create scratch org on {} from {}:\n{}",
+                    devhub_alias, scratch_org_def_path, stderr))
+            } else {
+                Ok(output)
+            }
+        }
+        Err(e) => {
+            Err(anyhow::anyhow!("failed to create scratch org on {} from {} due to {}",
+                devhub_alias, scratch_org_def_path, e))
+        }
+    }
+}
+
+
+pub fn sfdx_delete_org(
+    app_dir: &PathBuf,
+    devhub_alias: &str,
+    scratch_org_alias: &str,
+) -> Result<Output, anyhow::Error> {
+    let mut cmd = Command::new("sfdx");
+    cmd.current_dir(app_dir)
+        .arg("force:org:delete")
+        .arg("-v")
+        .arg(devhub_alias)
+        .arg("-u")
+        .arg(scratch_org_alias)
+        .arg("-p");
+    match cmd.output() {
+        Ok(output) => {
+            let status = output.status.code().unwrap();
+            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
+            if status != 0 {
+                return Err(anyhow::anyhow!(
+                    "failed to delete scratch org on {} named {}:\n {}",
+                    devhub_alias, scratch_org_alias, stderr));
+            }
+            Ok(output)
+        }
+        Err(e) => {
+            eprintln!(
+                "failed to delete scratch org on {} named {}",
+                devhub_alias, scratch_org_alias
+            );
+            Err(anyhow::anyhow!(e))
+        }
+    }
+}
+
+pub fn sfdx_push_source(
+    app_dir: &PathBuf,
+    scratch_org_alias: &str,
+    wait_seconds: i32,
+) -> Result<Output, anyhow::Error> {
+    let mut cmd = Command::new("sfdx");
+    let mut child = cmd
+        .current_dir(app_dir)
+        .arg("force:source:push")
+        .arg("-u")
+        .arg(scratch_org_alias)
+        .arg("-w")
+        .arg(wait_seconds.to_string())
+        .spawn()
+        .expect("failed to execute child");
+
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
+        reader
+            .lines()
+            .filter_map(|line| line.ok())
+            .for_each(|line| eprintln!("{}", line));
+    }
+
+    let output = child.wait_with_output().expect("failed to wait on child");
+    if output.status.success() {
+        Ok(output)
+    } else {
+        Err(anyhow::anyhow!(
+            "failed to push source to {}:\n Exited with {}",
+            scratch_org_alias,output.status.code().unwrap()))
+    }
+}
+
+pub fn sfdx_test_apex(
+    app_dir: &PathBuf,
+    scratch_org_alias: &str,
+    results_path: PathBuf,
+    wait_seconds: i32,
+) -> Result<Output, anyhow::Error> {
+    let mut cmd = Command::new("sfdx");
+    cmd.current_dir(app_dir)
+        .arg("force:apex:test:run")
+        .arg("-u")
+        .arg(scratch_org_alias)
+        .arg("-l")
+        .arg("RunLocalTests")
+        .arg("-w")
+        .arg(wait_seconds.to_string())
+        .arg("-r")
+        .arg("tap")
+        .arg("-d")
+        .arg(results_path.as_os_str())
+        .arg("-c")
+        .arg("-v");
+
+    match cmd.output() {
+        Ok(output) => {
+            let status = output.status.code().unwrap();
+            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
+            // This is a Hack, to work around the platform bug that throws an error when no apex tests exist.
+            if status != 0
+                && !stderr
+                .contains("Always provide a classes, suites, tests, or testLevel property")
+            {
+                return Err(anyhow::anyhow!("failed to run apex tests on {}:\n {}",
+                    scratch_org_alias, stderr));
+            }
+            Ok(output)
+        }
+        Err(e) => {
+            eprintln!("failed to run apex tests on {}", scratch_org_alias);
+            Err(anyhow::anyhow!(e))
+        }
     }
 }
 

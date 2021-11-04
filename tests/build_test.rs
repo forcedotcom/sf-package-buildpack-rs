@@ -1,22 +1,41 @@
 extern crate sf_package_buildpack;
 
+use std::env;
 use tempfile::{tempdir, TempDir};
 
 use libcnb::{BuildContext, GenericPlatform, Platform};
 
 use libcnb::data::{buildpack_plan::BuildpackPlan, buildpack_plan::Entry};
 use std::path::PathBuf;
+use sf_package_buildpack::{sfdx_check_org, sfdx_delete_org};
 
 use crate::sf_package_buildpack::build;
 use crate::sf_package_buildpack::SFPackageBuildpackMetadata;
-use sf_package_buildpack::sfdx;
+use crate::sf_package_buildpack::sfdx;
 
 #[test]
-fn test_build() {
+fn test_ci_build() {
     let tmp_context = make_temp_context();
     let context = tmp_context.context;
 
+    env::set_var("CNB_LIFECYCLE_MODE", "CI");
+
     build(context).expect("Build failed");
+}
+
+#[test]
+fn test_dev_build() {
+    let tmp_context = make_temp_context();
+    let context = tmp_context.context;
+    let app_dir = context.app_dir.clone();
+    env::set_var("CNB_LIFECYCLE_MODE", "Dev");
+    build(context).expect("Build failed");
+
+    let exists = sfdx_check_org(&app_dir, "dev")
+        .expect("Failed to check org");
+    sfdx_delete_org(&app_dir, "hub", "dev").expect(
+        "Failed to delete org");
+    assert!(exists, "Org should exist");
 }
 
 #[test]

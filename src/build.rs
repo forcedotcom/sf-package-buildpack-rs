@@ -1,41 +1,19 @@
-use crate::data::buildpack_toml::SFPackageBuildpackMetadata;
-use crate::layers::sfdx::SFDXLayerLifecycle;
-use libcnb::{layer_lifecycle::execute_layer_lifecycle, BuildContext, GenericPlatform};
-use std::fmt::Debug;
+use std::env;
 use std::path::PathBuf;
-use std::process::{Command, Output};
 
-enum LifecycleMode {
-    Dev,
-    CI,
-    Test,
-    Prod,
-}
+use libcnb::{BuildContext, GenericPlatform, LifecycleMode};
+use libcnb::Error::BuildpackError;
 
-impl LifecycleMode {
-    pub fn from(os_str: String) -> Self {
-        match os_str.as_str() {
-            "Dev" => LifecycleMode::Dev,
-            "Test" => LifecycleMode::Test,
-            "Prod" => LifecycleMode::Prod,
-            "CI" | _ => LifecycleMode::CI,
-        }
-    }
-}
+pub use crate::layers::sfdx::{sfdx_check_org, sfdx_create_org, sfdx_delete_org, sfdx_push_source, sfdx_test_apex, SFDXLayerLifecycle};
+use crate::{base, SFPackageBuildpackMetadata};
+use crate::util::logger::{BuildLogger, Logger};
 
-/// `bin/build`
-pub fn build(
-    context: BuildContext<GenericPlatform, SFPackageBuildpackMetadata>,
-) -> Result<(), libcnb::Error<anyhow::Error>> {
+pub fn build(context: BuildContext<GenericPlatform, SFPackageBuildpackMetadata>) -> libcnb::Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true);
 
-    log_header(&mut logger, "---> Adding buildpack layers");
+    base::require_sfdx(&context)?;
 
-    log_info(&mut logger, "---> Layering sfdx");
-    require_sfdx(&context)?;
-
-    let lifecycle_mode = env::var("CNB_LIFECYCLE_MODE")
-        .unwrap_or(String::from("CI"));
+    let lifecycle_mode = env::var("CNB_LIFECYCLE_MODE").unwrap_or(String::from("CI"));
     let mode = LifecycleMode::from(lifecycle_mode);
 
     // Lifecycle Mode => Dev, CI, Test, or Prod
@@ -43,319 +21,116 @@ pub fn build(
     // CI => namespaced scratch org created, source push, test run, scratch org deleted
     // Test (Install) => beta package version built, non-namespaced extended scratch org created, dependent packages installed, beta package version installed, setup automation if desired
     // Test (Upgrade) => beta package version built, non-namespaced extended scratch org created, dependent packages installed, ancestor released package version installed, setup automation if desired, beta package version installed
-    // Prod => beta package version promoted, published
+    // Package => beta package version promoted, published
     match mode {
-        LifecycleMode::CI => {
-            let app_dir = context.app_dir;
-
-            // TODO make configurable
-            let devhub_alias = "hub";
-            let scratch_org_alias = "ci";
-            let scratch_org_def_path = "config/project-scratch-def.json";
-            let scratch_org_duration = 1;
-
-            log_header(&mut logger, "---> Creating environment");
-
-            log_info(&mut logger, "---> Creating scratch org");
-            match sfdx_create_org(
-                app_dir.clone(),
-                devhub_alias,
-                scratch_org_def_path,
-                scratch_org_duration,
-                scratch_org_alias,
-            ) {
-                Ok(output) => {
-                    log_output(&mut logger, "creating environment", output);
-                }
-                Err(e) => {
-                    return Err(libcnb::Error::BuildpackError(anyhow::Error::from(e)));
-                }
-            }
-
-            log_header(&mut logger, "---> Preparing artifacts");
-
-            log_info(&mut logger, "---> Pushing source code");
-            match sfdx_push_source(app_dir.clone(), scratch_org_alias, 120) {
-                Ok(output) => log_output(&mut logger, "preparing artifacts", output),
-                Err(e) => {
-                    reset_environment(&mut logger, app_dir, devhub_alias, scratch_org_alias);
-                    return Err(libcnb::Error::BuildpackError(anyhow::Error::from(e)));
-                }
-            }
-
-            log_header(&mut logger, "---> Running tests");
-
-            if find_one_apex_test(&app_dir) {
-                log_info(&mut logger, "---> Running apex tests");
-                match sfdx_test_apex(
-                    app_dir.clone(),
-                    scratch_org_alias,
-                    app_dir.join("results"),
-                    240,
-                ) {
-                    Ok(output) => {
-                        log_output(&mut logger, "running tests", output);
-                    }
-                    Err(e) => {
-                        reset_environment(&mut logger, app_dir, devhub_alias, scratch_org_alias);
-                        return Err(libcnb::Error::BuildpackError(anyhow::Error::from(e)));
-                    }
-                }
-            }
-
-            reset_environment(&mut logger, app_dir, devhub_alias, scratch_org_alias);
-
-            Ok(())
-        }
+        LifecycleMode::Dev => dev_build(context, &mut logger).map_err(BuildpackError),
+        LifecycleMode::CI => ci_build(context, &mut logger).map_err(BuildpackError),
         _ => Ok(()),
     }
 }
 
-pub fn sfdx(context: &BuildContext<GenericPlatform, SFPackageBuildpackMetadata>) -> Result<Command, libcnb::Error<anyhow::Error>> {
-    require_sfdx(context)?;
-    Ok(Command::new("sfdx"))
-}
+fn dev_build(context: BuildContext<GenericPlatform, SFPackageBuildpackMetadata>, logger: &mut BuildLogger) -> Result<(), anyhow::Error> {
+    let app_dir = context.app_dir;
 
-fn require_sfdx(context: &BuildContext<GenericPlatform, SFPackageBuildpackMetadata>) -> Result<bool, libcnb::Error<anyhow::Error>> {
-    let use_builtin = env::var("CNB_SFDX_USE_BUILTIN");
-    if use_builtin.is_err() {
-        let output = String::from_utf8(Command::new("sfdx")
-            .arg("--version")
-            .output()
-            .expect("failed to execute process").stdout).unwrap();
-        if output.contains("sfdx-cli/") {
-            return Ok(false);
-        }
+    // TODO make configurable
+    let devhub_alias = "hub";
+    let scratch_org_alias = "dev";
+    let scratch_org_def_path = "config/project-scratch-def.json";
+    let scratch_org_duration = 15;
+    let dev_op_wait_seconds = 120;
+    let dev_run_tests = false;
+
+    logger.header("---> Creating environment")?;
+    if !sfdx_check_org(&app_dir, scratch_org_alias)? {
+        logger.info("---> Creating scratch org")?;
+        let output = sfdx_create_org(&app_dir, devhub_alias, scratch_org_def_path, scratch_org_duration, scratch_org_alias)?;
+        logger.output("creating environment", output)?;
     }
-    execute_layer_lifecycle("sfdx", SFDXLayerLifecycle, &context)?;
-    Ok(true)
-}
 
-fn find_one_apex_test(app_dir: &PathBuf) -> bool {
-    if let Some(vec) = read_package_directories(&app_dir, true, true) {
-        for p in vec.iter() {
-            if find_one_file(p.as_path(), "IsTest") {
-                return true;
+    logger.header("---> Preparing artifacts")?;
+
+    let proceed = push_source(logger, &app_dir, scratch_org_alias, dev_op_wait_seconds)?;
+
+    if proceed && dev_run_tests {
+        logger.header("---> Running tests")?;
+
+        if base::find_one_apex_test(&app_dir) {
+            logger.info("---> Running apex tests")?;
+            match sfdx_test_apex(&app_dir, scratch_org_alias, app_dir.join("results"), 240) {
+                Ok(output) => {
+                    logger.output("running tests", output)?;
+                }
+                Err(e) => {
+                    logger.error("running tests", e)?;
+                }
             }
         }
     }
-    false
+
+    Ok(())
 }
 
-fn reset_environment(
-    mut logger: &mut BuildLogger,
-    app_dir: PathBuf,
-    devhub_alias: &str,
-    scratch_org_alias: &str,
-) {
-    log_header(&mut logger, "---> Resetting environment");
-
-    log_info(&mut logger, "---> Deleting scratch org");
-    let output = sfdx_delete_org(app_dir, devhub_alias, scratch_org_alias).unwrap();
-    log_output(&mut logger, "resetting environment", output);
-}
-
-fn log_header(logger: &mut BuildLogger, header: &str) {
-    logger.header(header).unwrap();
-}
-
-fn log_info(logger: &mut BuildLogger, info: &str) {
-    logger.info(info).unwrap();
-}
-
-fn log_output(logger: &mut BuildLogger, header: &str, output: Output) {
-    let status = output.status;
-    if !&output.stdout.is_empty() {
-        logger
-            .info(format!("---> {}", String::from_utf8_lossy(&output.stdout)))
-            .unwrap();
-    }
-    if !&output.stderr.is_empty() {
-        if status.success() {
-            // Yes, some sfdx commands like force:source:push decided to output progress to stderr.
-            logger
-                .info(format!("---> {}", String::from_utf8_lossy(&output.stderr)))
-                .unwrap();
-        } else {
-            logger
-                .error(
-                    format!("---> Failed {}", header),
-                    format!("---> {}", String::from_utf8_lossy(&output.stderr)),
-                )
-                .unwrap();
-        }
-    }
-}
-
-#[derive(Debug)]
-struct BuildError(String);
-
-use crate::util::config::read_package_directories;
-use crate::util::files::find_one_file;
-use crate::util::logger::{BuildLogger, Logger};
-use std::{error, env};
-use std::fmt;
-use std::io::{BufReader, BufRead};
-
-impl fmt::Display for BuildError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "There is an error: {}", self.0)
-    }
-}
-
-impl error::Error for BuildError {}
-
-fn sfdx_create_org(
-    app_dir: PathBuf,
-    devhub_alias: &str,
-    scratch_org_def_path: &str,
-    scratch_org_duration: i32,
-    scratch_org_alias: &str,
-) -> Result<Output, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
-    cmd.current_dir(app_dir)
-        .arg("force:org:create")
-        .arg("-v")
-        .arg(devhub_alias)
-        .arg("-f")
-        .arg(scratch_org_def_path)
-        .arg("-d")
-        .arg(scratch_org_duration.to_string())
-        .arg("-a")
-        .arg(scratch_org_alias);
-    match cmd.output() {
+fn push_source(logger: &mut BuildLogger, app_dir: &PathBuf, scratch_org_alias: &str, dev_op_wait_seconds: i32) -> Result<bool, anyhow::Error> {
+    logger.info("---> Pushing source code")?;
+    let mut succeeded = true;
+    match sfdx_push_source(&app_dir, scratch_org_alias, dev_op_wait_seconds) {
         Ok(output) => {
-            let status = output.status.code().unwrap();
-            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
-            if status != 0 {
-                return Err(anyhow::Error::new(BuildError(format!(
-                    "failed to create scratch org on {} from {}:\n{}",
-                    devhub_alias, scratch_org_def_path, stderr
-                ))));
-            }
-            Ok(output)
-        }
+            logger.output("preparing artifacts", output)?;
+        },
         Err(e) => {
-            println!(
-                "failed to create scratch org on {} from {}",
-                devhub_alias, scratch_org_def_path
-            );
-            Err(anyhow::Error::new(e))
+            logger.error("preparing artifacts", e)?;
+            succeeded = false;
         }
     }
+    Ok(succeeded)
 }
 
-fn sfdx_delete_org(
-    app_dir: PathBuf,
-    devhub_alias: &str,
-    scratch_org_alias: &str,
-) -> Result<Output, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
-    cmd.current_dir(app_dir)
-        .arg("force:org:delete")
-        .arg("-v")
-        .arg(devhub_alias)
-        .arg("-u")
-        .arg(scratch_org_alias)
-        .arg("-p");
-    match cmd.output() {
+fn ci_build(context: BuildContext<GenericPlatform, SFPackageBuildpackMetadata>, logger: &mut BuildLogger) -> Result<(), anyhow::Error> {
+    let app_dir = context.app_dir;
+
+    // TODO make configurable
+    let devhub_alias = "hub";
+    let scratch_org_alias = "ci";
+    let scratch_org_def_path = "config/project-scratch-def.json";
+    let scratch_org_duration_days = 1;
+    let ci_op_wait_seconds = 120;
+
+    logger.header("---> Creating environment")?;
+
+    logger.info("---> Creating scratch org")?;
+    let output = sfdx_create_org(&app_dir, devhub_alias, scratch_org_def_path, scratch_org_duration_days, scratch_org_alias)?;
+    logger.output("creating environment", output)?;
+
+    logger.header("---> Preparing artifacts")?;
+
+    logger.info("---> Pushing source code")?;
+    let mut abort = false;
+    match sfdx_push_source(&app_dir, scratch_org_alias, ci_op_wait_seconds) {
         Ok(output) => {
-            let status = output.status.code().unwrap();
-            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
-            if status != 0 {
-                return Err(anyhow::Error::new(BuildError(format!(
-                    "failed to delete scratch org on {} named {}:\n {}",
-                    devhub_alias, scratch_org_alias, stderr
-                ))));
-            }
-            Ok(output)
-        }
+            logger.output("preparing artifacts", output)?;
+        },
         Err(e) => {
-            println!(
-                "failed to delete scratch org on {} named {}",
-                devhub_alias, scratch_org_alias
-            );
-            Err(anyhow::Error::new(e))
+            logger.error("preparing artifacts", e)?;
+            abort = true;
         }
     }
-}
 
-fn sfdx_push_source(
-    app_dir: PathBuf,
-    scratch_org_alias: &str,
-    wait_seconds: i32,
-) -> Result<Output, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
-    let mut child = cmd.current_dir(app_dir)
-        .arg("force:source:push")
-        .arg("-u")
-        .arg(scratch_org_alias)
-        .arg("-w")
-        .arg(wait_seconds.to_string())
-        .spawn()
-        .expect("failed to execute child");
+    if !abort {
+        logger.header("---> Running tests")?;
 
-    if let Some(stderr) = child.stderr.take() {
-        let reader = BufReader::new(stderr);
-        reader
-            .lines()
-            .filter_map(|line| line.ok())
-            .for_each(|line| eprintln!("{}", line));
-    }
-
-    let output = child.wait_with_output()
-        .expect("failed to wait on child");
-    if output.status.success() {
-        Ok(output)
-    } else {
-        Err(anyhow::Error::new(BuildError(format!(
-                "failed to push source to {}:\n Exited with {}",
-                scratch_org_alias, output.status.code().unwrap()
-            ))))
-    }
-}
-
-fn sfdx_test_apex(
-    app_dir: PathBuf,
-    scratch_org_alias: &str,
-    results_path: PathBuf,
-    wait_seconds: i32,
-) -> Result<Output, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
-    cmd.current_dir(app_dir)
-        .arg("force:apex:test:run")
-        .arg("-u")
-        .arg(scratch_org_alias)
-        .arg("-l")
-        .arg("RunLocalTests")
-        .arg("-w")
-        .arg(wait_seconds.to_string())
-        .arg("-r")
-        .arg("tap")
-        .arg("-d")
-        .arg(results_path.as_os_str())
-        .arg("-c")
-        .arg("-v");
-
-    match cmd.output() {
-        Ok(output) => {
-            let status = output.status.code().unwrap();
-            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
-            // This is a Hack, to work around the platform bug that throws an error when no apex tests exist.
-            if status != 0
-                && !stderr
-                    .contains("Always provide a classes, suites, tests, or testLevel property")
-            {
-                return Err(anyhow::Error::new(BuildError(format!(
-                    "failed to run apex tests on {}:\n {}",
-                    scratch_org_alias, stderr
-                ))));
+        if base::find_one_apex_test(&app_dir) {
+            logger.info("---> Running apex tests")?;
+            match sfdx_test_apex(&app_dir, scratch_org_alias, app_dir.join("results"), 240) {
+                Ok(output) => {
+                    logger.output("running tests", output)?;
+                }
+                Err(e) => {
+                    logger.error("running tests", e)?;
+                }
             }
-            Ok(output)
-        }
-        Err(e) => {
-            println!("failed to run apex tests on {}", scratch_org_alias);
-            Err(anyhow::Error::new(e))
         }
     }
+
+    base::reset_environment(app_dir, devhub_alias, scratch_org_alias);
+    Ok(())
 }

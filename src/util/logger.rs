@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use std::{fmt::Display, io::Write};
+use std::process::Output;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 pub trait Logger {
@@ -13,6 +14,8 @@ pub trait Logger {
     fn warning(&mut self, header: impl Display, msg: impl Display) -> anyhow::Result<()>;
     /// Display debug information
     fn debug(&mut self, msg: impl Display) -> anyhow::Result<()>;
+    /// Display output from an executed process
+    fn output(&mut self, msg: impl Display, output: Output) -> anyhow::Result<()>;
 }
 
 /// A logger that uses generics for the implementation of stderr/stdout.
@@ -56,6 +59,10 @@ impl<T: Write + WriteColor> Logger for GenericLogger<T> {
     fn debug(&mut self, msg: impl Display) -> anyhow::Result<()> {
         Ok(debug(&mut self.stdout, msg, self.debug)?)
     }
+
+    fn output(&mut self, header: impl Display, result: Output) -> anyhow::Result<()> {
+        Ok(output(&mut self.stdout, header, result, self.debug)?)
+    }
 }
 
 pub fn header(stdout: &mut impl WriteColor, msg: impl Display) -> anyhow::Result<()> {
@@ -94,6 +101,26 @@ pub fn debug(stdout: &mut impl WriteColor, msg: impl Display, debug: bool) -> an
     if debug {
         writeln!(stdout, "[DEBUG] {}", msg)?;
         stdout.flush()?;
+    }
+
+    Ok(())
+}
+
+pub fn output(stdout: &mut impl WriteColor, header: impl Display, output: Output, debug: bool) -> anyhow::Result<()> {
+    if debug {
+        let status = output.status;
+        if !&output.stdout.is_empty() {
+            writeln!(stdout, "---> {}", String::from_utf8_lossy(&output.stdout))?;
+        }
+        if !&output.stderr.is_empty() {
+            if status.success() {
+                // Yes, some sfdx commands like force:source:push decided to output progress to stderr.
+                writeln!(stdout, "---> {}", String::from_utf8_lossy(&output.stderr))?;
+            } else {
+                error(stdout, format!("---> Failed {}", header),
+                        format!("---> {}", String::from_utf8_lossy(&output.stderr)))?;
+            }
+        }
     }
 
     Ok(())

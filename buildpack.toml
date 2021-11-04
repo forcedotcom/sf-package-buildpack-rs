@@ -1,10 +1,11 @@
-api = "0.4"
+# Buildpack API version
+api = "0.5"
 
 [buildpack]
 id = "heroku/sf-package"
 version = "0.0.1"
 name = "Salesforce Package Builder"
-clear-env = true
+#clear-env = true
 homepage = "https://github.com/forcedotcom/sf-package-buildpacks-rs"
 keywords = ["salesforce", "sfdx", "package", "2gp"]
 
@@ -26,8 +27,3 @@ id = "io.buildpacks.stacks.bionic"
 url = "https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz"
 manifest = "https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64-buildmanifest"
 sha256 = ""
-
-[metadata.release]
-
-[metadata.release.docker]
-repository = "public.ecr.aws/heroku-buildpacks/heroku-sf-package-buildpack"
