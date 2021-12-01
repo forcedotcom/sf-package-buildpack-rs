@@ -1,7 +1,6 @@
 use libcnb::{GenericPlatform, TestContext, TestOutcome, TestResults};
+use crate::util::config::SFPackageBuildpackConfig;
 
-use crate::SFPackageBuildpackMetadata;
-
-pub fn test(_context: TestContext<GenericPlatform, SFPackageBuildpackMetadata>) -> libcnb::Result<TestOutcome, anyhow::Error> {
+pub fn test(_context: TestContext<GenericPlatform, SFPackageBuildpackConfig>) -> libcnb::Result<TestOutcome, anyhow::Error> {
     Ok(TestOutcome::Pass(TestResults::new()))
 }

@@ -1,7 +1,6 @@
 use libcnb::{GenericPlatform, PublishContext};
+use crate::util::config::SFPackageBuildpackConfig;
 
-use crate::SFPackageBuildpackMetadata;
-
-pub fn publish(_context: PublishContext<GenericPlatform, SFPackageBuildpackMetadata>) -> libcnb::Result<(), anyhow::Error> {
+pub fn publish(_context: PublishContext<GenericPlatform, SFPackageBuildpackConfig>) -> libcnb::Result<(), anyhow::Error> {
     Ok(())
 }

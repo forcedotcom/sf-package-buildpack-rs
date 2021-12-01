@@ -1,0 +1,22 @@
+[default]
+hub_alias = "hub"
+org_def_path = "config/project-scratch-def.json"
+op_wait_seconds = 120
+
+[package]
+name = "sf-package-test"
+description = "SF Package Buildpack Package"
+create_if_needed = true
+type = "Managed"
+version_name = "Version One"
+version_number = "1.0"
+directory = "force-app"
+
+[dev]
+org_alias = "dev"
+org_duration_days = 15
+run_tests = false
+
+[ci]
+org_alias = "ci"
+org_duration_days = 1

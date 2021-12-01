@@ -1,8 +1,10 @@
-use crate::util::files::read_file_to_string;
+use serde::{Serialize, Deserialize};
 use json::JsonValue;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use libcnb::read_file_to_string;
+use toml::value::Table;
 
 pub fn read_package_directories(
     app_dir: &PathBuf,
@@ -40,6 +42,225 @@ pub fn read_package_directories(
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SFPackageBuildpackConfig {
+    pub runtime: SFDXRuntimeConfig,
+}
+
+/// Struct containing the url and sha256 checksum for a downloadable sfdx-runtime-java-runtime.
+/// This is used in both `buildpack.toml` and the `layer.toml` but with different keys.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SFDXRuntimeConfig {
+    pub url: String,
+    pub manifest: String,
+    pub sha256: String,
+}
+
+impl SFDXRuntimeConfig {
+    /// Build a `Runtime` from the `layer.toml`'s `metadata` keys.
+    pub fn from_runtime_layer(metadata: &Table) -> Self {
+        let empty_string = toml::Value::String("".to_string());
+        let url = metadata
+            .get("runtime_url")
+            .unwrap_or(&empty_string)
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let manifest = metadata
+            .get("runtime_manifest")
+            .unwrap_or(&empty_string)
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let sha256 = metadata
+            .get("runtime_sha256")
+            .unwrap_or(&empty_string)
+            // coerce toml::Value into &str
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        SFDXRuntimeConfig {
+            url,
+            manifest,
+            sha256,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SFPackageAppConfig {
+    pub default: DefaultConfig,
+    pub package: PackageConfig,
+    pub dev: DevConfig,
+    pub ci: CIConfig,
+}
+
+impl Default for SFPackageAppConfig {
+    fn default() -> Self {
+        let default_config = DefaultConfig::default();
+
+        SFPackageAppConfig {
+            default: default_config,
+            package: PackageConfig::default(),
+            dev: DevConfig::default(),
+            ci: CIConfig::default(),
+        }
+    }
+}
+
+impl SFPackageAppConfig {
+    pub fn from_dir(app_dir: &PathBuf) -> Self {
+        let file = app_dir.join("app.toml");
+        if let Some(file_text) = read_file_to_string(file.as_path()) {
+            let mut config: SFPackageAppConfig = toml::from_str(&file_text).unwrap();
+            config.package.set_defaults(&config.default);
+            config.dev.set_defaults(&config.default);
+            config.ci.set_defaults(&config.default);
+            config
+        } else {
+            SFPackageAppConfig::default()
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+pub struct DefaultConfig {
+    #[serde(default)]
+    pub hub_alias: String,
+    #[serde(default)]
+    pub org_def_path: String,
+    #[serde(default)]
+    pub op_wait_seconds: i32,
+}
+
+impl Default for DefaultConfig {
+    fn default() -> Self {
+        DefaultConfig {
+            hub_alias: "hub".to_string(),
+            org_def_path: "config/project-scratch-def.json".to_string(),
+            op_wait_seconds: 120
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Serialize, Default)]
+pub struct PackageConfig {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub namespace: String,
+    #[serde(default)]
+    pub create_if_needed: bool,
+    #[serde(default)]
+    pub hub_alias: String,
+    #[serde(default)]
+    pub org_def_path: String,
+    #[serde(default )]
+    pub id: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub package_type: String,
+    #[serde(default)]
+    pub root: String,
+    #[serde(default)]
+    pub installation_key: String,
+    #[serde(default)]
+    pub version_name: String,
+    #[serde(default)]
+    pub version_number: String,
+    #[serde(default)]
+    pub op_wait_seconds: i32,
+}
+
+impl PackageConfig {
+    fn set_defaults(&mut self, config: &DefaultConfig) {
+        if self.hub_alias.is_empty() {
+            self.hub_alias = config.hub_alias.clone();
+        }
+        if self.org_def_path.is_empty() {
+            self.org_def_path = config.org_def_path.clone();
+        }
+        if self.op_wait_seconds <= 0 {
+            self.op_wait_seconds = config.op_wait_seconds;
+        }
+        if self.package_type.is_empty() {
+            self.package_type = "Unlocked".to_string();
+        }
+        if self.root.is_empty() {
+            self.root = "force-app".to_string();
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Serialize, Default)]
+pub struct DevConfig {
+    #[serde(default)]
+    pub hub_alias: String,
+    #[serde(default)]
+    pub org_def_path: String,
+    #[serde(default)]
+    pub op_wait_seconds: i32,
+    #[serde(default)]
+    pub org_alias: String,
+    #[serde(default)]
+    pub org_duration_days: i32,
+    #[serde(default)]
+    pub run_tests: bool,
+}
+
+impl DevConfig {
+    fn set_defaults(&mut self, config: &DefaultConfig) {
+        if self.hub_alias.is_empty() {
+            self.hub_alias = config.hub_alias.clone();
+        }
+        if self.org_def_path.is_empty() {
+            self.org_def_path = config.org_def_path.clone();
+        }
+        if self.op_wait_seconds <= 0 {
+            self.op_wait_seconds = config.op_wait_seconds;
+        }
+        if self.org_duration_days <= 0 {
+            self.org_duration_days = 7;
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Serialize, Default)]
+pub struct CIConfig {
+    #[serde(default)]
+    pub hub_alias: String,
+    #[serde(default)]
+    pub org_def_path: String,
+    #[serde(default)]
+    pub op_wait_seconds: i32,
+    #[serde(default)]
+    pub org_alias: String,
+    #[serde(default)]
+    pub org_duration_days: i32,
+}
+
+impl CIConfig {
+    fn set_defaults(&mut self, config: &DefaultConfig) {
+        if self.hub_alias.is_empty() {
+            self.hub_alias = config.hub_alias.clone();
+        }
+        if self.org_def_path.is_empty() {
+            self.org_def_path = config.org_def_path.clone();
+        }
+        if self.op_wait_seconds <= 0 {
+            self.op_wait_seconds = config.op_wait_seconds;
+        }
+        if self.org_alias.is_empty() {
+            self.org_alias = "ci".to_string();
+        }
+        if self.org_duration_days <= 0 {
+            self.org_duration_days = 1;
+        }
+    }
+}
+
 fn read_project_file_json(app_dir: &PathBuf) -> JsonValue {
     let project_file = app_dir.join("sfdx-project.json");
     let project_file_text = read_file_to_string(project_file.as_path()).unwrap();
@@ -50,9 +271,9 @@ fn read_project_file_json(app_dir: &PathBuf) -> JsonValue {
 #[cfg(test)]
 mod tests {
     use crate::util::config;
-    use crate::util::files;
     use std::fs;
     use std::path::PathBuf;
+    use libcnb::write_file;
     use tempfile::tempdir;
 
     fn setup() -> PathBuf {
@@ -103,8 +324,41 @@ mod tests {
 }
 "#;
         let temp_app_dir = tempdir().unwrap().into_path();
-        let f = temp_app_dir.join("sfdx-project.json");
-        files::tests::write_file(project_file_content, &f).unwrap();
+        let mut f = temp_app_dir.join("sfdx-project.json");
+        write_file(project_file_content, &f);
+
+        let buildpack_file_content = r#"
+{
+    "package": {
+        "name": "SfPackageBuildpackPackage",
+        "description": "SF Package Buildpack Package",
+        "type": "Managed",
+        "directory": "force-app"
+    },
+    "dev": {
+        "hub_alias": "hub",
+        "org_alias": "dev",
+        "org_def_path": "config/project-scratch-def.json",
+        "org_duration": 15,
+        "op_wait_seconds": 120,
+        "run_tests": false
+    },
+    "ci": {
+        "hub_alias": "hub",
+        "org_alias": "ci",
+        "org_def_path": "config/project-scratch-def.json",
+        "org_duration_days": 1,
+        "op_wait_seconds": 120
+    },
+    "package": {
+        "hub_alias": "hub",
+        "org_def_path": "config/project-scratch-def.json",
+        "op_wait_seconds": 120
+    }
+}
+"#;
+        f = temp_app_dir.join("sfdx-buildpack.json");
+        write_file(buildpack_file_content, &f);
 
         fs::create_dir(temp_app_dir.join("force-app")).unwrap();
         fs::create_dir(temp_app_dir.join("force-app/vendor")).unwrap();

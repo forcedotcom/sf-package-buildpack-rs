@@ -93,6 +93,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "chrono"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
+dependencies = [
+ "libc",
+ "num-integer",
+ "num-traits",
+ "time",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -472,14 +485,21 @@ checksum = "a1fa8cddc8fbbee11227ef194b5317ed014b8acbf15139bd716a18ad3fe99ec5"
 [[package]]
 name = "libcnb"
 version = "0.3.0"
+source = "git+https://github.com/michaelhoefer/libcnb.rs#b1220cb60498baf71a59c16a4648246e1e1c3882"
 dependencies = [
  "anyhow",
  "lazy_static",
  "regex",
+ "reqwest",
  "semver",
  "serde",
+ "sha2",
+ "tar",
+ "tempfile",
  "thiserror",
  "toml",
+ "walkdir",
+ "xz",
 ]
 
 [[package]]
@@ -598,6 +618,25 @@ dependencies = [
  "cfg-if 0.1.10",
  "libc",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
+dependencies = [
+ "autocfg",
+ "num-traits",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -839,6 +878,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite 0.2.7",
  "serde",
+ "serde_json",
  "serde_urlencoded",
  "tokio",
  "tokio-tls",
@@ -928,9 +968,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.66"
+version = "1.0.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "336b10da19a12ad094b59d870ebde26a45402e5b470add4b5fd03c5048a32127"
+checksum = "e277c495ac6cd1a01a58d0a0c574568b4d1ddf14f59965c6a58b8d96400b54f3"
 dependencies = [
  "itoa",
  "ryu",
@@ -955,21 +995,18 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "chrono",
  "flate2",
  "json",
  "libcnb",
  "openssl",
- "regex",
  "reqwest",
  "serde",
- "sha2",
- "tar",
+ "serde_json",
  "tempfile",
  "termcolor",
  "thiserror",
  "toml",
- "walkdir",
- "xz",
 ]
 
 [[package]]
@@ -1065,6 +1102,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "time"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
+dependencies = [
+ "libc",
+ "wasi",
+ "winapi 0.3.9",
 ]
 
 [[package]]
@@ -1259,9 +1307,9 @@ dependencies = [
 
 [[package]]
 name = "wasi"
-version = "0.10.2+wasi-snapshot-preview1"
+version = "0.10.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6fbd9a79829dd1ad0cc20627bf1ed606756a7f77edff7b66b7064f9cb327c6"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasm-bindgen"

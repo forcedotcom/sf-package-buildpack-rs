@@ -4,23 +4,20 @@ use std::path::{Path, PathBuf};
 use anyhow::Error;
 use libcnb::data::layer_content_metadata::LayerContentMetadata;
 use libcnb::layer_lifecycle::{LayerLifecycle, ValidateResult};
-use libcnb::{BuildContext, GenericPlatform};
+use libcnb::{BuildContext, get, get_and_extract, GenericPlatform};
 use std::env;
 use std::io::{BufRead, BufReader};
-use std::process::{Command, Output};
+use std::process::{Child, Command, Output};
 
-use crate::base::SFPackageBuildpackMetadata;
-use crate::base::SFDXRuntime;
-
-use crate::util::fetch::{extract, get};
+use crate::util::config::{SFDXRuntimeConfig, SFPackageBuildpackConfig};
 
 pub struct SFDXLayerLifecycle;
 
 impl
 LayerLifecycle<
     GenericPlatform,
-    SFPackageBuildpackMetadata,
-    SFPackageBuildpackMetadata,
+    SFPackageBuildpackConfig,
+    SFPackageBuildpackConfig,
     HashMap<String, String>,
     anyhow::Error,
 > for SFDXLayerLifecycle
@@ -28,9 +25,9 @@ LayerLifecycle<
     fn create(
         &self,
         layer_path: &Path,
-        build_context: &BuildContext<GenericPlatform, SFPackageBuildpackMetadata>,
-    ) -> Result<LayerContentMetadata<SFPackageBuildpackMetadata>, anyhow::Error> {
-        let runtime_sha256 = extract(
+        build_context: &BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
+    ) -> Result<LayerContentMetadata<SFPackageBuildpackConfig>, anyhow::Error> {
+        let runtime_sha256 = get_and_extract(
             &build_context.buildpack_descriptor.metadata.runtime.url,
             &layer_path,
             Some("sfdx/"),
@@ -40,8 +37,8 @@ LayerLifecycle<
             .build(false)
             .cache(true)
             .launch(true)
-            .metadata(SFPackageBuildpackMetadata {
-                runtime: SFDXRuntime {
+            .metadata(SFPackageBuildpackConfig {
+                runtime: SFDXRuntimeConfig {
                     url: build_context
                         .buildpack_descriptor
                         .metadata
@@ -62,10 +59,10 @@ LayerLifecycle<
     fn validate(
         &self,
         _layer_path: &Path,
-        layer_content_metadata: &LayerContentMetadata<SFPackageBuildpackMetadata>,
-        build_context: &BuildContext<GenericPlatform, SFPackageBuildpackMetadata>,
+        layer_content_metadata: &LayerContentMetadata<SFPackageBuildpackConfig>,
+        build_context: &BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
     ) -> ValidateResult {
-        // Fetch most recent sfdx.tar.xz manifest
+        // Get most recent sfdx.tar.xz manifest
         let manifest_content =
             get(&build_context.buildpack_descriptor.metadata.runtime.manifest).unwrap();
         let manifest = json::parse(&manifest_content).unwrap();
@@ -85,7 +82,7 @@ LayerLifecycle<
     fn layer_lifecycle_data(
         &self,
         layer_path: &Path,
-        _layer_content_metadata: LayerContentMetadata<SFPackageBuildpackMetadata>,
+        _layer_content_metadata: LayerContentMetadata<SFPackageBuildpackConfig>,
     ) -> Result<HashMap<String, String>, Error> {
         let mut layer_env: HashMap<String, String> = HashMap::new();
         let bin_path = format!("{}/bin", &layer_path.to_str().unwrap());
@@ -214,15 +211,9 @@ pub fn sfdx_push_source(
         .arg("-w")
         .arg(wait_seconds.to_string())
         .spawn()
-        .expect("failed to execute child");
+        .expect("failed to execute command");
 
-    if let Some(stderr) = child.stderr.take() {
-        let reader = BufReader::new(stderr);
-        reader
-            .lines()
-            .filter_map(|line| line.ok())
-            .for_each(|line| eprintln!("{}", line));
-    }
+    output_stderr(&mut child);
 
     let output = child.wait_with_output().expect("failed to wait on child");
     if output.status.success() {
@@ -231,6 +222,148 @@ pub fn sfdx_push_source(
         Err(anyhow::anyhow!(
             "failed to push source to {}:\n Exited with {}",
             scratch_org_alias,output.status.code().unwrap()))
+    }
+}
+
+pub struct SfdxResponse<R> {
+    pub status: u8,
+    pub result: R,
+}
+
+pub struct CreatePackageResult {
+    pub created: bool,
+    pub package_id: String,
+}
+
+pub struct FindPackageResult {
+    pub package_id: String,
+}
+
+pub fn sfdx_find_package(
+    app_dir: &PathBuf,
+    devhub_alias: &String,
+    package_name: &String,
+) -> Result<SfdxResponse<FindPackageResult>, anyhow::Error> {
+    let mut cmd = Command::new("sfdx");
+    let output = cmd
+        .current_dir(app_dir)
+        .arg("force:package:list")
+        .arg("--json")
+        .arg("-v")
+        .arg(devhub_alias)
+        .output()
+        .expect("failed to execute command");
+
+    if output.status.success() {
+        let stdout = String::from_utf8(output.stdout)?;
+        let v: serde_json::Value = serde_json::from_str(stdout.as_str())?;
+        let package_values = v["result"].as_array().unwrap();
+        match package_values.iter().find(|v| v["Name"].as_str().unwrap().eq(package_name)) {
+            Some(package) =>
+                Ok(SfdxResponse {status: 0, result: FindPackageResult {package_id: package["Id"].as_str().unwrap().to_string()}}),
+            None =>
+                Ok(SfdxResponse {status: 1, result: FindPackageResult {package_id: "".to_string()}})
+        }
+    } else {
+        Err(anyhow::anyhow!(
+            "failed to create new package {}:\n Exited with {}",
+            package_name, output.status.code().unwrap()))
+    }
+}
+
+pub fn sfdx_create_package(
+    app_dir: &PathBuf,
+    devhub_alias: &String,
+    package_name: &String,
+    package_desc: &String,
+    package_type: &String,
+    package_root: &String,
+) -> Result<SfdxResponse<CreatePackageResult>, anyhow::Error> {
+    let mut cmd = Command::new("sfdx");
+    let mut child = cmd
+        .current_dir(app_dir)
+        .arg("force:package:create")
+        .arg("--json")
+        .arg("-v")
+        .arg(devhub_alias)
+        .arg("-n")
+        .arg(package_name)
+        .arg("-d")
+        .arg(package_desc)
+        .arg("-t")
+        .arg(package_type)
+        .arg("-r")
+        .arg(package_root)
+        .spawn()
+        .expect("failed to execute command");
+
+    output_stderr(&mut child);
+
+    let output = child.wait_with_output().expect("failed to wait on command");
+    if output.status.success() {
+        let stdout = String::from_utf8(output.stdout)?;
+        let v: serde_json::Value = serde_json::from_str(stdout.as_str())?;
+        let status = 0;
+        let result = CreatePackageResult {created: true, package_id: v["result"]["Id"].to_string()};
+        Ok(SfdxResponse {status, result})
+    } else {
+        Err(anyhow::anyhow!(
+            "failed to create new package {}:\n Exited with {}",
+            package_name, output.status.code().unwrap()))
+    }
+}
+
+fn output_stderr(child: &mut Child) {
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
+        reader.lines().filter_map(|line| line.ok())
+            .for_each(|line| eprintln!("{}", line));
+    }
+}
+
+pub fn sfdx_create_package_version(
+    app_dir: &PathBuf,
+    devhub_alias: &String,
+    package_id: &String,
+    org_def_path: &String,
+    version_name: &String,
+    version_number: &String,
+    installation_key: &String,
+    wait_seconds: i32,
+) -> Result<serde_json::Value, anyhow::Error> {
+    let mut cmd = Command::new("sfdx");
+    cmd
+        .current_dir(&app_dir)
+        .arg("force:package:version:create")
+        .arg("--json")
+        .arg("-p")
+        .arg(package_id)
+        .arg("-v")
+        .arg(devhub_alias)
+        .arg("-f")
+        .arg(org_def_path)
+        .arg("-a")
+        .arg(version_name)
+        .arg("-n")
+        .arg(version_number)
+        .arg("-w")
+        .arg(wait_seconds.to_string());
+    if installation_key.is_empty() {
+        cmd.arg("-x");
+    } else {
+        cmd.arg("-k").arg(installation_key);
+    }
+    let output =  cmd.output()
+        .expect("failed to execute command");
+
+    if output.status.success() {
+        let stdout = String::from_utf8(output.stdout)?;
+        let v: serde_json::Value = serde_json::from_str(stdout.as_str())?;
+        Ok(v)
+    } else {
+        Err(anyhow::anyhow!(
+            "failed to create new package version of {}:\n Exited with {}",
+            package_id, output.status.code().unwrap()))
     }
 }
 

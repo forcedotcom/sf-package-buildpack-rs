@@ -2,7 +2,7 @@
 api = "0.5"
 
 [buildpack]
-id = "heroku/sf-package"
+id = "sf/package"
 version = "0.0.1"
 name = "Salesforce Package Builder"
 #clear-env = true

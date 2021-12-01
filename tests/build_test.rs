@@ -3,53 +3,20 @@ extern crate sf_package_buildpack;
 use std::env;
 use tempfile::{tempdir, TempDir};
 
-use libcnb::{BuildContext, GenericPlatform, Platform};
+use libcnb::{BuildContext, GenericPlatform, LifecycleMode, Platform};
 
 use libcnb::data::{buildpack_plan::BuildpackPlan, buildpack_plan::Entry};
 use std::path::PathBuf;
-use sf_package_buildpack::{sfdx_check_org, sfdx_delete_org};
+use sf_package_buildpack::{sfdx_check_org, sfdx_delete_org, SFPackageBuildpackConfig};
 
 use crate::sf_package_buildpack::build;
-use crate::sf_package_buildpack::SFPackageBuildpackMetadata;
 use crate::sf_package_buildpack::sfdx;
-
-#[test]
-fn test_ci_build() {
-    let tmp_context = make_temp_context();
-    let context = tmp_context.context;
-
-    env::set_var("CNB_LIFECYCLE_MODE", "CI");
-
-    build(context).expect("Build failed");
-}
-
-#[test]
-fn test_dev_build() {
-    let tmp_context = make_temp_context();
-    let context = tmp_context.context;
-    let app_dir = context.app_dir.clone();
-    env::set_var("CNB_LIFECYCLE_MODE", "Dev");
-    build(context).expect("Build failed");
-
-    let exists = sfdx_check_org(&app_dir, "dev")
-        .expect("Failed to check org");
-    sfdx_delete_org(&app_dir, "hub", "dev").expect(
-        "Failed to delete org");
-    assert!(exists, "Org should exist");
-}
-
-#[test]
-fn test_sfdx() {
-    let tmp_context = make_temp_context();
-    // TODO add mock to validate the client was/was not actually installed here
-    sfdx(&tmp_context.context).expect("Failed to test sfdx layer");
-}
 
 struct TempContext {
     // Hold reference to temp dirs so they're not cleaned off disk
     // https://heroku.slack.com/archives/CFF88C0HM/p1631124162001800
     _tmp_dirs: Vec<TempDir>,
-    context: BuildContext<GenericPlatform, SFPackageBuildpackMetadata>,
+    context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
 }
 
 fn make_temp_context() -> TempContext {
@@ -77,4 +44,50 @@ fn make_temp_context() -> TempContext {
         _tmp_dirs: vec![bp_temp, layers_temp],
         context,
     }
+}
+
+#[test]
+fn test_ci_build() {
+    let tmp_context = make_temp_context();
+    let context = tmp_context.context;
+
+    env::set_var("CNB_LIFECYCLE_MODE", LifecycleMode::CI);
+
+    build(context).expect("Build failed");
+}
+
+#[test]
+fn test_dev_build() {
+    let tmp_context = make_temp_context();
+    let context = tmp_context.context;
+    let app_dir = context.app_dir.clone();
+    env::set_var("CNB_LIFECYCLE_MODE", LifecycleMode::Dev);
+    build(context).expect("Build failed");
+
+    let exists = sfdx_check_org(&app_dir, "dev")
+        .expect("Failed to check org");
+    sfdx_delete_org(&app_dir, "hub", "dev").expect(
+        "Failed to delete org");
+    assert!(exists, "Org should exist");
+}
+
+#[test]
+fn test_sfdx() {
+    let tmp_context = make_temp_context();
+    // TODO add mock to validate the client was/was not actually installed here
+    sfdx(&tmp_context.context).expect("Failed to test sfdx layer");
+}
+
+#[test]
+fn test_package_build_direct() {
+    let tmp_context = make_temp_context();
+    let context = tmp_context.context;
+
+    env::set_var("CNB_LIFECYCLE_MODE", LifecycleMode::Package);
+
+    build(context).expect("Package build failed");
+}
+
+#[test]
+fn test_package_build_heroku() {
 }

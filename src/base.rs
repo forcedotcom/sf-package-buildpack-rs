@@ -1,69 +1,20 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use libcnb::{BuildContext, GenericPlatform};
+use libcnb::{BuildContext, find_one_file, GenericPlatform};
 use libcnb::layer_lifecycle::execute_layer_lifecycle;
-use serde::{Deserialize, Serialize};
-use toml::value::Table;
 
 pub use crate::layers::sfdx::{sfdx_check_org, sfdx_create_org, sfdx_delete_org, sfdx_push_source, sfdx_test_apex, SFDXLayerLifecycle};
-use crate::util::config::read_package_directories;
-use crate::util::files::find_one_file;
+use crate::util::config::{read_package_directories, SFPackageBuildpackConfig};
 
 pub fn sfdx(
-    context: &BuildContext<GenericPlatform, SFPackageBuildpackMetadata>,
+    context: &BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
 ) -> Result<Command, anyhow::Error> {
     require_sfdx(context)?;
     Ok(Command::new("sfdx"))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SFPackageBuildpackMetadata {
-    pub runtime: SFDXRuntime,
-}
-
-/// Struct containing the url and sha256 checksum for a downloadable sfdx-runtime-java-runtime.
-/// This is used in both `buildpack.toml` and the `layer.toml` but with different keys.
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SFDXRuntime {
-    pub url: String,
-    pub manifest: String,
-    pub sha256: String,
-}
-
-impl SFDXRuntime {
-    /// Build a `Runtime` from the `layer.toml`'s `metadata` keys.
-    pub fn from_runtime_layer(metadata: &Table) -> Self {
-        let empty_string = toml::Value::String("".to_string());
-        let url = metadata
-            .get("runtime_url")
-            .unwrap_or(&empty_string)
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let manifest = metadata
-            .get("runtime_manifest")
-            .unwrap_or(&empty_string)
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let sha256 = metadata
-            .get("runtime_sha256")
-            .unwrap_or(&empty_string)
-            // coerce toml::Value into &str
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-
-        SFDXRuntime {
-            url,
-            manifest,
-            sha256,
-        }
-    }
-}
-
-pub(crate) fn require_sfdx(context: &BuildContext<GenericPlatform, SFPackageBuildpackMetadata>) -> anyhow::Result<()> {
+pub(crate) fn require_sfdx(context: &BuildContext<GenericPlatform, SFPackageBuildpackConfig>) -> anyhow::Result<()> {
     let use_builtin = std::env::var("CNB_SFDX_USE_BUILTIN");
     if use_builtin.is_err() {
         let output = String::from_utf8(
