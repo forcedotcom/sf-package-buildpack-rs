@@ -1,6 +1,6 @@
 use anyhow::anyhow;
-use std::{fmt::Display, io::Write};
 use std::process::Output;
+use std::{fmt::Display, io::Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 pub trait Logger {
@@ -106,7 +106,12 @@ pub fn debug(stdout: &mut impl WriteColor, msg: impl Display, debug: bool) -> an
     Ok(())
 }
 
-pub fn output(stdout: &mut impl WriteColor, header: impl Display, output: Output, debug: bool) -> anyhow::Result<()> {
+pub fn output(
+    stdout: &mut impl WriteColor,
+    header: impl Display,
+    output: Output,
+    debug: bool,
+) -> anyhow::Result<()> {
     if debug {
         let status = output.status;
         if !&output.stdout.is_empty() {
@@ -117,8 +122,11 @@ pub fn output(stdout: &mut impl WriteColor, header: impl Display, output: Output
                 // Yes, some sfdx commands like force:source:push decided to output progress to stderr.
                 writeln!(stdout, "---> {}", String::from_utf8_lossy(&output.stderr))?;
             } else {
-                error(stdout, format!("---> Failed {}", header),
-                        format!("---> {}", String::from_utf8_lossy(&output.stderr)))?;
+                error(
+                    stdout,
+                    format!("---> Failed {}", header),
+                    format!("---> {}", String::from_utf8_lossy(&output.stderr)),
+                )?;
             }
         }
     }

@@ -83,7 +83,7 @@ fn main() {
     println!("{}", "Successfully created buildpack directory".bold().green());
     println!("{}", "========================================".bold().green());
     println!("To try out your buildpack run:");
-    println!("$ pack build rust-cnb-starter -b {} --path {}", destination.to_str().unwrap().bold(), "$APP_DIR".bold());
+    println!("$ pack build sf-package -b {} --path {}", destination.to_str().unwrap().bold(), "$APP_DIR".bold());
     println!("");
 }
 '''

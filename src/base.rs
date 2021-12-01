@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use libcnb::{BuildContext, find_one_file, GenericPlatform};
 use libcnb::layer_lifecycle::execute_layer_lifecycle;
+use libcnb::{find_one_file, BuildContext, GenericPlatform};
 
-pub use crate::layers::sfdx::{sfdx_check_org, sfdx_create_org, sfdx_delete_org, sfdx_push_source, sfdx_test_apex, SFDXLayerLifecycle};
+pub use crate::layers::sfdx::{
+    sfdx_check_org, sfdx_create_org, sfdx_delete_org, sfdx_push_source, sfdx_test_apex,
+    SFDXLayerLifecycle,
+};
 use crate::util::config::{read_package_directories, SFPackageBuildpackConfig};
 
 pub fn sfdx(
@@ -14,7 +17,9 @@ pub fn sfdx(
     Ok(Command::new("sfdx"))
 }
 
-pub(crate) fn require_sfdx(context: &BuildContext<GenericPlatform, SFPackageBuildpackConfig>) -> anyhow::Result<()> {
+pub(crate) fn require_sfdx(
+    context: &BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
+) -> anyhow::Result<()> {
     let use_builtin = std::env::var("CNB_SFDX_USE_BUILTIN");
     if use_builtin.is_err() {
         let output = String::from_utf8(
@@ -24,7 +29,7 @@ pub(crate) fn require_sfdx(context: &BuildContext<GenericPlatform, SFPackageBuil
                 .expect("failed to execute process")
                 .stdout,
         )
-            .unwrap();
+        .unwrap();
         if output.contains("sfdx-cli/") {
             return Ok(());
         }
@@ -44,11 +49,7 @@ pub(crate) fn find_one_apex_test(app_dir: &PathBuf) -> bool {
     false
 }
 
-pub(crate) fn reset_environment(
-    app_dir: PathBuf,
-    devhub_alias: &str,
-    scratch_org_alias: &str,
-) {
+pub(crate) fn reset_environment(app_dir: PathBuf, devhub_alias: &str, scratch_org_alias: &str) {
     println!("---> Resetting environment");
     let output = sfdx_delete_org(&app_dir, devhub_alias, scratch_org_alias).unwrap();
     println!("{:?}", output);

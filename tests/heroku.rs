@@ -1,7 +1,7 @@
-use std::path::PathBuf;
 use libcnb::compress_and_put;
 use reqwest::{IntoUrl, StatusCode};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HerokuSources {
@@ -18,26 +18,32 @@ pub fn create_sources() -> Result<HerokuSources, anyhow::Error> {
     let client = reqwest::blocking::Client::new();
     let auth_token = std::env::var("HEROKU_AUTH_TOKEN")?;
     let app_name = "sf-package-test";
-    let response = client.post(format!("https://api.heroku.com/apps/{}/sources", app_name).as_str())
+    let response = client
+        .post(format!("https://api.heroku.com/apps/{}/sources", app_name).as_str())
         .header("Accept", "application/vnd.heroku+json; version=3")
         .header("Authorization", format!("Bearer {}", auth_token))
         .header("Content-Type", "application/json")
-        .body(r#"
+        .body(
+            r#"
     {
         "source_blob": {
             "get_url":"https://s3-external-1.amazonaws.com/herokusources/...",
             "put_url":"https://s3-external-1.amazonaws.com/herokusources/..."
         }
-    }"#).send()?;
+    }"#,
+        )
+        .send()?;
     match response.status() {
         StatusCode::OK | StatusCode::CREATED => {
             let str = response.text()?;
             let sources: HerokuSources = serde_json::from_str(str.as_str())?;
             Ok(sources)
-        },
-        _ => {
-            Err(anyhow::Error::msg(format!("Unexpected status {}.  {}.", response.status(), response.text()?)))
         }
+        _ => Err(anyhow::Error::msg(format!(
+            "Unexpected status {}.  {}.",
+            response.status(),
+            response.text()?
+        ))),
     }
 }
 
@@ -129,40 +135,60 @@ pub fn build_source(source_url: &str, source_version: &str) -> Result<HerokuBuil
     let client = reqwest::blocking::Client::new();
     let auth_token = std::env::var("HEROKU_AUTH_TOKEN")?;
     let app_name = "sf-package-test";
-    let body_json = format!(r#"
+    let body_json = format!(
+        r#"
     {{
       "buildpacks": [
         {{
-          "url": "https://github.com/forcedotcom/sf-package-buildpacks-rs.git"
+          "url": "https://github.com/forcedotcom/sf-package-buildpack-rs.git"
         }}
       ],
       "source_blob": {{
         "url": "{}",
         "version": "{}"
       }}
-    }}"#, source_url, source_version);
-    let response = client.post(format!("https://api.heroku.com/apps/{}/builds", app_name).as_str())
+    }}"#,
+        source_url, source_version
+    );
+    let response = client
+        .post(format!("https://api.heroku.com/apps/{}/builds", app_name).as_str())
         .header("Accept", "application/vnd.heroku+json; version=3")
         .header("Authorization", format!("Bearer {}", auth_token))
         .header("Content-Type", "application/json")
-        .body(body_json).send()?;
+        .body(body_json)
+        .send()?;
 
     match response.status() {
         StatusCode::OK | StatusCode::CREATED => {
             let str = response.text()?;
             let build: HerokuBuild = serde_json::from_str(str.as_str())?;
             Ok(build)
-        },
-        _ => {
-            Err(anyhow::Error::msg(format!("Unexpected status {}.  {}.", response.status(), response.text()?)))
         }
+        _ => Err(anyhow::Error::msg(format!(
+            "Unexpected status {}.  {}.",
+            response.status(),
+            response.text()?
+        ))),
     }
+}
+
+pub fn build() -> Result<HerokuBuild, anyhow::Error> {
+    let sources = create_sources()?;
+    let put_url = sources.source_blob.put_url;
+    let get_url = sources.source_blob.get_url;
+    let version = "v1.0.0";
+
+    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let app_dir = root_dir.join("tests/fixtures/sf-package");
+    upload_sources(&app_dir, &put_url)?;
+
+    build_source(get_url.as_str(), version)
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Value;
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn it_stuff_stuffs() {
@@ -170,8 +196,7 @@ mod tests {
             {
               "buildpacks": [
                     {
-                        "url": "https://github.com/forcedotcom/sf-package-buildpacks-rs",
-                        "name": "sf/package"
+                        "url": "https://github.com/forcedotcom/sf-package-buildpacks-rs.git",
                     }
                 ],
                 "source_blob": {
@@ -219,7 +244,7 @@ mod tests {
         match result {
             Ok(build) => {
                 println!("{:?}", build)
-            },
+            }
             Err(e) => panic!("{:?}", e),
         }
     }

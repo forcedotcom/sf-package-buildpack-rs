@@ -2,18 +2,23 @@ use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use libcnb::{BuildContext, GenericPlatform, LifecycleMode};
 use libcnb::Error::BuildpackError;
+use libcnb::{BuildContext, GenericPlatform, LifecycleMode};
 
-pub use crate::layers::sfdx::{sfdx_check_org, sfdx_create_org, sfdx_delete_org, sfdx_push_source, sfdx_test_apex, SFDXLayerLifecycle};
+pub use crate::layers::sfdx::{
+    sfdx_check_org, sfdx_create_org, sfdx_delete_org, sfdx_push_source, sfdx_test_apex,
+    SFDXLayerLifecycle,
+};
 
 use crate::layers::sfdx::{sfdx_create_package, sfdx_create_package_version, sfdx_find_package};
-use crate::{find_one_apex_test, require_sfdx, reset_environment};
 use crate::util::config::{SFPackageAppConfig, SFPackageBuildpackConfig};
 use crate::util::logger::{BuildLogger, Logger};
 use crate::util::meta::{write_package_meta, write_package_version_meta};
+use crate::{find_one_apex_test, require_sfdx, reset_environment};
 
-pub fn build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>) -> libcnb::Result<(), anyhow::Error> {
+pub fn build(
+    context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
+) -> libcnb::Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true);
 
     require_sfdx(&context)?;
@@ -35,7 +40,10 @@ pub fn build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>) -
     }
 }
 
-fn dev_build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>, logger: &mut BuildLogger) -> Result<(), anyhow::Error> {
+fn dev_build(
+    context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
+    logger: &mut BuildLogger,
+) -> Result<(), anyhow::Error> {
     let app_dir = context.app_dir;
 
     // TODO make configurable
@@ -76,13 +84,18 @@ fn dev_build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>, l
     Ok(())
 }
 
-fn push_source(logger: &mut BuildLogger, app_dir: &PathBuf, org_alias: &str, dev_op_wait_seconds: i32) -> Result<bool, anyhow::Error> {
+fn push_source(
+    logger: &mut BuildLogger,
+    app_dir: &PathBuf,
+    org_alias: &str,
+    dev_op_wait_seconds: i32,
+) -> Result<bool, anyhow::Error> {
     logger.info("---> Pushing source code")?;
     let mut succeeded = true;
     match sfdx_push_source(&app_dir, org_alias, dev_op_wait_seconds) {
         Ok(output) => {
             logger.output("preparing artifacts", output)?;
-        },
+        }
         Err(e) => {
             logger.error("preparing artifacts", e)?;
             succeeded = false;
@@ -91,7 +104,10 @@ fn push_source(logger: &mut BuildLogger, app_dir: &PathBuf, org_alias: &str, dev
     Ok(succeeded)
 }
 
-fn ci_build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>, logger: &mut BuildLogger) -> Result<(), anyhow::Error> {
+fn ci_build(
+    context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
+    logger: &mut BuildLogger,
+) -> Result<(), anyhow::Error> {
     let app_dir = context.app_dir;
 
     // TODO make configurable
@@ -104,7 +120,13 @@ fn ci_build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>, lo
     logger.header("---> Creating environment")?;
 
     logger.info("---> Creating scratch org")?;
-    let output = sfdx_create_org(&app_dir, hub_alias, org_def_path, org_duration_days, org_alias)?;
+    let output = sfdx_create_org(
+        &app_dir,
+        hub_alias,
+        org_def_path,
+        org_duration_days,
+        org_alias,
+    )?;
     logger.output("creating environment", output)?;
 
     logger.header("---> Preparing artifacts")?;
@@ -114,7 +136,7 @@ fn ci_build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>, lo
     match sfdx_push_source(&app_dir, org_alias, op_wait_seconds) {
         Ok(output) => {
             logger.output("preparing artifacts", output)?;
-        },
+        }
         Err(e) => {
             logger.error("preparing artifacts", e)?;
             abort = true;
@@ -141,39 +163,68 @@ fn ci_build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>, lo
     Ok(())
 }
 
-fn package_build(context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>, logger: &mut BuildLogger) -> Result<(), anyhow::Error> {
+fn package_build(
+    context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
+    logger: &mut BuildLogger,
+) -> Result<(), anyhow::Error> {
     let app_dir = context.app_dir;
 
     let app_config = SFPackageAppConfig::from_dir(&app_dir);
     let package_config = app_config.package;
 
     logger.header("---> Preparing artifacts")?;
-    let mut package_id= package_config.id;
+    let mut package_id = package_config.id;
     if package_id.is_empty() && package_config.create_if_needed {
-        let found_response = sfdx_find_package(&app_dir, &package_config.hub_alias, &package_config.name)?;
+        let found_response =
+            sfdx_find_package(&app_dir, &package_config.hub_alias, &package_config.name)?;
         if found_response.result.package_id.is_empty() {
             logger.info("---> Creating package")?;
-            let response = sfdx_create_package(&app_dir, &package_config.hub_alias, &package_config.name, &package_config.description, &package_config.package_type, &package_config.root)?;
+            let response = sfdx_create_package(
+                &app_dir,
+                &package_config.hub_alias,
+                &package_config.name,
+                &package_config.description,
+                &package_config.package_type,
+                &package_config.root,
+            )?;
             package_id = response.result.package_id;
         } else {
             package_id = found_response.result.package_id;
         }
-        write_package_meta(&app_dir, &package_id, &package_config.name, &package_config.hub_alias)?;
+        write_package_meta(
+            &app_dir,
+            &package_id,
+            &package_config.name,
+            &package_config.hub_alias,
+        )?;
     }
 
     logger.info("---> Building package version")?;
-    match sfdx_create_package_version(&app_dir, &package_config.hub_alias, &package_id,
-                                      &package_config.org_def_path, &package_config.version_name,
-                                      &package_config.version_number,
-                                      &package_config.installation_key,
-                                      package_config.op_wait_seconds) {
+    match sfdx_create_package_version(
+        &app_dir,
+        &package_config.hub_alias,
+        &package_id,
+        &package_config.org_def_path,
+        &package_config.version_name,
+        &package_config.version_number,
+        &package_config.installation_key,
+        package_config.op_wait_seconds,
+    ) {
         Ok(v) => {
             let result = &v["result"];
-            write_package_version_meta(&app_dir, &package_config.version_name, &package_config.version_number, &package_id,
-                                       result["SubscriberPackageVersionId"].as_str().unwrap().to_string(),
-                                       result["CreatedDate"].as_str().unwrap().to_string())?;
+            write_package_version_meta(
+                &app_dir,
+                &package_config.version_name,
+                &package_config.version_number,
+                &package_id,
+                result["SubscriberPackageVersionId"]
+                    .as_str()
+                    .unwrap()
+                    .to_string(),
+                result["CreatedDate"].as_str().unwrap().to_string(),
+            )?;
             logger.info("New package version created")?;
-        },
+        }
         Err(e) => {
             logger.error("preparing artifacts", e)?;
         }

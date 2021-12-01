@@ -1,9 +1,9 @@
-use std::path::PathBuf;
-use std::str::FromStr;
-use libcnb::{read_file_to_string, TomlFileError, write_toml_file};
-use serde::{Serialize, Deserialize};
 use chrono;
 use chrono::TimeZone;
+use libcnb::{read_file_to_string, write_toml_file, TomlFileError};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::str::FromStr;
 use toml::value::Datetime;
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -63,22 +63,32 @@ pub struct PackageVersionMeta {
     status: PackageVersionStatus,
 }
 
-pub fn write_package_meta(app_dir: &PathBuf, id: &String, name: &String, hub_alias: &String)
-        -> Result<(), anyhow::Error> {
+pub fn write_package_meta(
+    app_dir: &PathBuf,
+    id: &String,
+    name: &String,
+    hub_alias: &String,
+) -> Result<(), anyhow::Error> {
     let mut app_meta = SFPackageAppMeta::from_dir(app_dir);
     app_meta.package = PackageMeta {
         id: id.to_string(),
         name: name.to_string(),
-        hub_alias: hub_alias.to_string()
+        hub_alias: hub_alias.to_string(),
     };
     match app_meta.to_dir(app_dir) {
         Ok(()) => Ok(()),
-        Err(e) => Err(anyhow::Error::new(e))
+        Err(e) => Err(anyhow::Error::new(e)),
     }
 }
 
-pub fn write_package_version_meta(app_dir: &PathBuf, name: &String, number: &String, package_id: &String,
-                                  id: String, created_date: String) -> Result<(), anyhow::Error> {
+pub fn write_package_version_meta(
+    app_dir: &PathBuf,
+    name: &String,
+    number: &String,
+    package_id: &String,
+    id: String,
+    created_date: String,
+) -> Result<(), anyhow::Error> {
     let mut app_meta = SFPackageAppMeta::from_dir(app_dir);
     app_meta.package_versions.push(PackageVersionMeta {
         id,
@@ -86,11 +96,11 @@ pub fn write_package_version_meta(app_dir: &PathBuf, name: &String, number: &Str
         number: number.to_string(),
         package_id: package_id.to_string(),
         created_date: to_toml_datetime(created_date.as_str()),
-        status: PackageVersionStatus::Beta
+        status: PackageVersionStatus::Beta,
     });
     match app_meta.to_dir(app_dir) {
         Ok(()) => Ok(()),
-        Err(e) => Err(anyhow::Error::new(e))
+        Err(e) => Err(anyhow::Error::new(e)),
     }
 }
 
@@ -101,7 +111,7 @@ fn to_toml_datetime(str: &str) -> Datetime {
         Ok(d) => {
             let toml_str = d.format("%Y-%m-%dT%H:%M:00").to_string();
             Datetime::from_str(toml_str.as_str()).unwrap()
-        },
-        Err(e) => panic!("{}", e)
+        }
+        Err(e) => panic!("{}", e),
     }
 }

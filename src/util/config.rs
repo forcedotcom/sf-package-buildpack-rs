@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
 use json::JsonValue;
+use libcnb::read_file_to_string;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use libcnb::read_file_to_string;
 use toml::value::Table;
 
 pub fn read_package_directories(
@@ -139,7 +139,7 @@ impl Default for DefaultConfig {
         DefaultConfig {
             hub_alias: "hub".to_string(),
             org_def_path: "config/project-scratch-def.json".to_string(),
-            op_wait_seconds: 120
+            op_wait_seconds: 120,
         }
     }
 }
@@ -156,7 +156,7 @@ pub struct PackageConfig {
     pub hub_alias: String,
     #[serde(default)]
     pub org_def_path: String,
-    #[serde(default )]
+    #[serde(default)]
     pub id: String,
     #[serde(default)]
     pub description: String,
@@ -271,9 +271,9 @@ fn read_project_file_json(app_dir: &PathBuf) -> JsonValue {
 #[cfg(test)]
 mod tests {
     use crate::util::config;
+    use libcnb::write_file;
     use std::fs;
     use std::path::PathBuf;
-    use libcnb::write_file;
     use tempfile::tempdir;
 
     fn setup() -> PathBuf {

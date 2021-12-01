@@ -20,6 +20,13 @@
             "versionName": "ver 0.1",
             "versionNumber": "0.1.0.NEXT",
             "default": false
+        },
+        {
+            "path": "force-app",
+            "package": "sf-package-test",
+            "versionName": "ver 0.1",
+            "versionNumber": "0.1.0.NEXT",
+            "default": false
         }
     ],
     "namespace": "",
@@ -38,6 +45,7 @@
         "SfPackageBuildpackPackage@0.1.0-8": "04t3t000002zQe4AAE",
         "SfPackageBuildpackPackage@0.1.0-9": "04t3t000002zQe9AAE",
         "SfPackageBuildpackPackage@0.1.0-10": "04t3t000002zQeEAAU",
-        "SfPackageBuildpackPackage@0.1.0-11": "04t3t000002zQeJAAU"
+        "SfPackageBuildpackPackage@0.1.0-11": "04t3t000002zQeJAAU",
+        "sf-package-test": "0Ho3t000000XZNrCAO"
     }
 }

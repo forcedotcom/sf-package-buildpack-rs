@@ -1,16 +1,15 @@
 pub use base::*;
-pub use detect::*;
 pub use build::*;
-pub use test::*;
+pub use detect::*;
 pub use publish::*;
+pub use test::*;
 pub use util::config::SFPackageBuildpackConfig;
+pub use util::logger::*;
 
-mod layers;
-mod util;
 mod base;
 mod build;
-mod test;
 mod detect;
+mod layers;
 mod publish;
-mod client;
-
+mod test;
+mod util;

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Error;
 use libcnb::data::layer_content_metadata::LayerContentMetadata;
 use libcnb::layer_lifecycle::{LayerLifecycle, ValidateResult};
-use libcnb::{BuildContext, get, get_and_extract, GenericPlatform};
+use libcnb::{get, get_and_extract, BuildContext, GenericPlatform};
 use std::env;
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Output};
@@ -14,13 +14,13 @@ use crate::util::config::{SFDXRuntimeConfig, SFPackageBuildpackConfig};
 pub struct SFDXLayerLifecycle;
 
 impl
-LayerLifecycle<
-    GenericPlatform,
-    SFPackageBuildpackConfig,
-    SFPackageBuildpackConfig,
-    HashMap<String, String>,
-    anyhow::Error,
-> for SFDXLayerLifecycle
+    LayerLifecycle<
+        GenericPlatform,
+        SFPackageBuildpackConfig,
+        SFPackageBuildpackConfig,
+        HashMap<String, String>,
+        anyhow::Error,
+    > for SFDXLayerLifecycle
 {
     fn create(
         &self,
@@ -101,12 +101,10 @@ LayerLifecycle<
     }
 }
 
-pub fn sfdx_check_org(
-    app_dir: &PathBuf,
-    scratch_org_alias: &str,
-) -> Result<bool, anyhow::Error> {
+pub fn sfdx_check_org(app_dir: &PathBuf, scratch_org_alias: &str) -> Result<bool, anyhow::Error> {
     let mut cmd = Command::new("sfdx");
-    let result = cmd.current_dir(app_dir)
+    let result = cmd
+        .current_dir(app_dir)
         .args(vec!["force:org:display", "-u", scratch_org_alias])
         .output();
 
@@ -150,18 +148,22 @@ pub fn sfdx_create_org(
             if status != 0 {
                 Err(anyhow::anyhow!(
                     "failed to create scratch org on {} from {}:\n{}",
-                    devhub_alias, scratch_org_def_path, stderr))
+                    devhub_alias,
+                    scratch_org_def_path,
+                    stderr
+                ))
             } else {
                 Ok(output)
             }
         }
-        Err(e) => {
-            Err(anyhow::anyhow!("failed to create scratch org on {} from {} due to {}",
-                devhub_alias, scratch_org_def_path, e))
-        }
+        Err(e) => Err(anyhow::anyhow!(
+            "failed to create scratch org on {} from {} due to {}",
+            devhub_alias,
+            scratch_org_def_path,
+            e
+        )),
     }
 }
-
 
 pub fn sfdx_delete_org(
     app_dir: &PathBuf,
@@ -183,7 +185,10 @@ pub fn sfdx_delete_org(
             if status != 0 {
                 return Err(anyhow::anyhow!(
                     "failed to delete scratch org on {} named {}:\n {}",
-                    devhub_alias, scratch_org_alias, stderr));
+                    devhub_alias,
+                    scratch_org_alias,
+                    stderr
+                ));
             }
             Ok(output)
         }
@@ -221,7 +226,9 @@ pub fn sfdx_push_source(
     } else {
         Err(anyhow::anyhow!(
             "failed to push source to {}:\n Exited with {}",
-            scratch_org_alias,output.status.code().unwrap()))
+            scratch_org_alias,
+            output.status.code().unwrap()
+        ))
     }
 }
 
@@ -258,16 +265,29 @@ pub fn sfdx_find_package(
         let stdout = String::from_utf8(output.stdout)?;
         let v: serde_json::Value = serde_json::from_str(stdout.as_str())?;
         let package_values = v["result"].as_array().unwrap();
-        match package_values.iter().find(|v| v["Name"].as_str().unwrap().eq(package_name)) {
-            Some(package) =>
-                Ok(SfdxResponse {status: 0, result: FindPackageResult {package_id: package["Id"].as_str().unwrap().to_string()}}),
-            None =>
-                Ok(SfdxResponse {status: 1, result: FindPackageResult {package_id: "".to_string()}})
+        match package_values
+            .iter()
+            .find(|v| v["Name"].as_str().unwrap().eq(package_name))
+        {
+            Some(package) => Ok(SfdxResponse {
+                status: 0,
+                result: FindPackageResult {
+                    package_id: package["Id"].as_str().unwrap().to_string(),
+                },
+            }),
+            None => Ok(SfdxResponse {
+                status: 1,
+                result: FindPackageResult {
+                    package_id: "".to_string(),
+                },
+            }),
         }
     } else {
         Err(anyhow::anyhow!(
             "failed to create new package {}:\n Exited with {}",
-            package_name, output.status.code().unwrap()))
+            package_name,
+            output.status.code().unwrap()
+        ))
     }
 }
 
@@ -304,19 +324,26 @@ pub fn sfdx_create_package(
         let stdout = String::from_utf8(output.stdout)?;
         let v: serde_json::Value = serde_json::from_str(stdout.as_str())?;
         let status = 0;
-        let result = CreatePackageResult {created: true, package_id: v["result"]["Id"].to_string()};
-        Ok(SfdxResponse {status, result})
+        let result = CreatePackageResult {
+            created: true,
+            package_id: v["result"]["Id"].to_string(),
+        };
+        Ok(SfdxResponse { status, result })
     } else {
         Err(anyhow::anyhow!(
             "failed to create new package {}:\n Exited with {}",
-            package_name, output.status.code().unwrap()))
+            package_name,
+            output.status.code().unwrap()
+        ))
     }
 }
 
 fn output_stderr(child: &mut Child) {
     if let Some(stderr) = child.stderr.take() {
         let reader = BufReader::new(stderr);
-        reader.lines().filter_map(|line| line.ok())
+        reader
+            .lines()
+            .filter_map(|line| line.ok())
             .for_each(|line| eprintln!("{}", line));
     }
 }
@@ -332,8 +359,7 @@ pub fn sfdx_create_package_version(
     wait_seconds: i32,
 ) -> Result<serde_json::Value, anyhow::Error> {
     let mut cmd = Command::new("sfdx");
-    cmd
-        .current_dir(&app_dir)
+    cmd.current_dir(&app_dir)
         .arg("force:package:version:create")
         .arg("--json")
         .arg("-p")
@@ -353,8 +379,7 @@ pub fn sfdx_create_package_version(
     } else {
         cmd.arg("-k").arg(installation_key);
     }
-    let output =  cmd.output()
-        .expect("failed to execute command");
+    let output = cmd.output().expect("failed to execute command");
 
     if output.status.success() {
         let stdout = String::from_utf8(output.stdout)?;
@@ -363,7 +388,9 @@ pub fn sfdx_create_package_version(
     } else {
         Err(anyhow::anyhow!(
             "failed to create new package version of {}:\n Exited with {}",
-            package_id, output.status.code().unwrap()))
+            package_id,
+            output.status.code().unwrap()
+        ))
     }
 }
 
@@ -396,10 +423,13 @@ pub fn sfdx_test_apex(
             // This is a Hack, to work around the platform bug that throws an error when no apex tests exist.
             if status != 0
                 && !stderr
-                .contains("Always provide a classes, suites, tests, or testLevel property")
+                    .contains("Always provide a classes, suites, tests, or testLevel property")
             {
-                return Err(anyhow::anyhow!("failed to run apex tests on {}:\n {}",
-                    scratch_org_alias, stderr));
+                return Err(anyhow::anyhow!(
+                    "failed to run apex tests on {}:\n {}",
+                    scratch_org_alias,
+                    stderr
+                ));
             }
             Ok(output)
         }
