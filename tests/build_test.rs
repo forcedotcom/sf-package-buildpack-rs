@@ -1,7 +1,7 @@
-#[cfg(feature = "heroku")]
+// #[cfg(feature = "heroku")]
 mod heroku;
 
-#[cfg(feature = "heroku")]
+// #[cfg(feature = "heroku")]
 mod tests {
     use std::env;
 
@@ -21,7 +21,6 @@ mod tests {
 
     fn make_temp_context() -> TempContext {
         let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
         let bp_temp = tempdir().unwrap();
         let layers_temp = tempdir().unwrap();
 
@@ -47,6 +46,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_ci_build() {
         let tmp_context = make_temp_context();
         let context = tmp_context.context;
@@ -57,6 +57,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_dev_build() {
         let tmp_context = make_temp_context();
         let context = tmp_context.context;
@@ -72,6 +73,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_sfdx() {
         let tmp_context = make_temp_context();
         // TODO add mock to validate the client was/was not actually installed here
@@ -79,6 +81,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_package_build() {
         let tmp_context = make_temp_context();
         let context = tmp_context.context;
@@ -91,6 +94,7 @@ mod tests {
     use crate::heroku;
 
     #[test]
+    #[ignore]
     fn test_heroku_sources() {
         match heroku::create_sources() {
             Ok(s) => {
@@ -103,6 +107,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_heroku_package_build() {
         match heroku::build() {
             Ok(s) => {

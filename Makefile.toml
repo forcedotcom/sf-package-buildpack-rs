@@ -59,6 +59,8 @@ script = '''
 //! ```cargo
 //! [dependencies]
 //! colored = "2.0.0"
+//! flate2 = "^1.0.22"
+//! tar = "^0.4.37"
 //! ```
 // Silence warning from rust-script:
 #![allow(non_snake_case)]
@@ -66,6 +68,9 @@ use std::path::PathBuf;
 use std::fs;
 use std::collections::HashMap;
 use colored::*;
+use flate2::read::GzDecoder;
+use tar::Archive;
+
 fn main() {
     let destination = PathBuf::from("target");
     if destination.exists() {
@@ -80,11 +85,50 @@ fn main() {
         fs::copy(from, to).unwrap();
     }
     fs::hard_link(destination.join("bin/build"), destination.join("bin/detect")).unwrap();
+    fs::hard_link(destination.join("bin/build"), destination.join("bin/test")).unwrap();
+    fs::hard_link(destination.join("bin/build"), destination.join("bin/publish")).unwrap();
     println!("{}", "Successfully created buildpack directory".bold().green());
     println!("{}", "========================================".bold().green());
     println!("To try out your buildpack run:");
     println!("$ pack build sf-package -b {} --path {}", destination.to_str().unwrap().bold(), "$APP_DIR".bold());
     println!("");
+}
+'''
+
+[tasks.archive]
+script_runner = "@rust"
+script = '''
+//! ```cargo
+//! [dependencies]
+//! colored = "2.0.0"
+//! flate2 = "^1.0.22"
+//! tar = "^0.4.37"
+//! ```
+// Silence warning from rust-script:
+#![allow(non_snake_case)]
+use std::path::PathBuf;
+use std::fs;
+use colored::*;
+use flate2::Compression;
+use flate2::write::GzEncoder;
+
+fn main() {
+    let target = PathBuf::from("target");
+    assert!(target.exists(), "Missing target dir");
+
+    let tar_gz = fs::File::create("buildpack.tar.gz").unwrap();
+    let enc = GzEncoder::new(tar_gz, Compression::default());
+    let mut tar = tar::Builder::new(enc);
+    match tar.append_dir_all(".", target) {
+        Ok(_) =>
+            print!("{}", "Successfully created buildpack archive".bold().green()),
+        Err(e) => {
+            print!("{}", "Failed to create buildpack archive".bold().red());
+            print!("{}", e);
+        }
+    }
+
+    println!();
 }
 '''
 
