@@ -1,25 +1,31 @@
 [package]
 name = "sf-package-buildpack"
-version = "0.0.0"
-edition = "2018"
-license = "MIT"
+version = "0.1.0"
+edition = "2021"
 rust-version = "1.56"
+license = "Apache-2.0"
+description = "Salesforce Package buildpack"
+repository = "https://github.com/forcedotcom/sf-package-buildpack-rs"
+readme = "README.md"
+include = ["src/**/*", "LICENSE", "README.md"]
 
 [dependencies]
-anyhow = "^1.0.42"
-flate2 = "1"
-json = "0.12"
-"libcnb" = { git = "https://github.com/michaelhoefer/libcnb.rs" }
-openssl = { version = "0.10.36", features = ["vendored"] }
-serde = "1.0.126"
-serde_json = "1.0.70"
-tempfile = "3"
-termcolor = "1.1"
-thiserror = "1.0"
-toml = "0.5"
+anyhow = "1.0.51"
+flate2 = "1.0.22"
+json = "0.12.4"
+libcnb = { version = "0.3.0", path = "../libcnb-rs" }
+openssl = { version = "0.10.38", features = ["vendored"] }
+serde = "1.0.131"
+serde_json = "1.0.73"
+tempfile = "3.2.0"
+termcolor = "1.1.2"
+toml = "0.5.8"
 chrono = "0.4.19"
-reqwest = { version = "0.10", features = ["blocking", "json"] }
+reqwest = { version = "0.11.7", features = ["blocking", "json"] }
+hex = "0.4.3"
+base64 = "0.13.0"
+clap = "3.0.0-rc.7"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
-tempfile = "^3.2.0"
+dotenv = "0.15.0"

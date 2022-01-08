@@ -1,5 +1,9 @@
 [default]
+hub_client_id = "3MVG9JEx.BE6yifMwrjHPgoh5LBDEECZgHw9odyBrMZ4.qsQI_CqDLjnQDkPFjVOsuzCoAHuaAS9Sd0TqnTJG"
+hub_key_file = "assets/hub.key.enc"
+hub_user = "mhoefer@mphhub.org"
 hub_alias = "hub"
+hub_instance_url = "https://mphhub-dev-ed.my.salesforce.com"
 org_def_path = "config/project-scratch-def.json"
 op_wait_seconds = 120
 
@@ -9,14 +13,17 @@ description = "SF Package Buildpack Package"
 create_if_needed = true
 type = "Managed"
 version_name = "Version One"
-version_number = "1.0"
+version_number = "1.0.0.NEXT"
 directory = "force-app"
 
 [dev]
 org_alias = "dev"
 org_duration_days = 15
 run_tests = false
+test_results_format = "tap"
 
 [ci]
 org_alias = "ci"
 org_duration_days = 1
+test_results_path = "results/apex"
+test_results_format = "junit"

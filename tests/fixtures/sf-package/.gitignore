@@ -37,3 +37,6 @@ $RECYCLE.BIN/
 
 # Local environment variables
 .env
+
+# Cache metadata
+app-meta.toml

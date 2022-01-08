@@ -1,17 +1,26 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
+use serde::{Deserialize, Serialize};
+
+use crate::{BuildLogger, Logger};
 use libcnb::data::layer_content_metadata::LayerContentMetadata;
 use libcnb::layer_lifecycle::{LayerLifecycle, ValidateResult};
-use libcnb::{get, get_and_extract, BuildContext, GenericPlatform};
+use libcnb::{
+    get, get_and_extract, write_file, BuildContext, GenericPlatform, TestOutcome, TestResult,
+    TestResults, TestStatus,
+};
 use std::env;
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Output};
+use std::str::FromStr;
 
-use crate::util::config::{SFDXRuntimeConfig, SFPackageBuildpackConfig};
+use crate::util::config::{SFDXRuntimeConfig, SFPackageBuildpackConfig, TestResultsFormat};
+use crate::util::enc_file::{decrypt, EncFile};
 
-pub struct SFDXLayerLifecycle;
+pub(crate) struct SFDXLayerLifecycle;
 
 impl
     LayerLifecycle<
@@ -101,40 +110,404 @@ impl
     }
 }
 
-pub fn sfdx_check_org(app_dir: &PathBuf, scratch_org_alias: &str) -> Result<bool, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
-    let result = cmd
-        .current_dir(app_dir)
-        .args(vec!["force:org:display", "-u", scratch_org_alias])
-        .output();
+//{
+//   "status": 0,
+//   "result": {
+//     "id": "00D3t000004SKHiEAO",
+//     "accessToken": "00D3t000004SKHi!ARcAQJr1zmx8VGxeTaUmSevec9XwFd3jvbCIuM0ctdpG_WJ1jStEye9E__TeIziZJBocoLvSr7Z91pNgtVQv4Tj6Akc_SVET",
+//     "instanceUrl": "https://mphhub-dev-ed.my.salesforce.com",
+//     "username": "mhoefer@mphhub.org",
+//     "clientId": "3MVG9JEx.BE6yifMwrjHPgoh5LBDEECZgHw9odyBrMZ4.qsQI_CqDLjnQDkPFjVOsuzCoAHuaAS9Sd0TqnTJG",
+//     "connectedStatus": "Connected"
+//   },
+//   "warnings": [
+//     "This command will expose sensitive information that allows for subsequent activity using your current authenticated session.\nSharing this information is equivalent to logging someone in under the current credential, resulting in unintended access and escalation of privilege.\nFor additional information, please review the authorization section of the https://developer.salesforce.com/docs/atlas.en-us.234.0.sfdx_dev.meta/sfdx_dev/sfdx_dev_auth_web_flow.htm"
+//   ]
+// }
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OrgDisplay {
+    status: i32,
+    result: Option<OrgDisplayResult>,
+    warnings: Vec<String>,
+}
 
-    if let Ok(output) = result {
-        if let Some(code) = output.status.code() {
-            if !output.stdout.is_empty() {
-                println!("{}", String::from_utf8(output.stdout)?);
-            }
-            if !output.stderr.is_empty() {
-                println!("{}", String::from_utf8(output.stderr)?);
-            }
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OrgDisplayResult {
+    pub id: String,
+    pub access_token: String,
+    pub instance_url: String,
+    pub username: String,
+    pub client_id: String,
+    pub connected_status: Option<OrgStatus>,
+    pub status: Option<OrgStatus>,
+}
 
-            return Ok(code == 0);
+/*
+{
+  "status": 0,
+  "result": {
+    "Id": "08c3t000000Xa2kAAC",
+    "Status": "Success",
+    "Package2Id": "0Ho3t000000XZNrCAO",
+    "Package2VersionId": "05i3t000000XZeMAAW",
+    "SubscriberPackageVersionId": "04t3t000002zQrEAAU",
+    "Tag": null,
+    "Branch": null,
+    "Error": [],
+    "CreatedDate": "2022-01-05 11:38",
+    "HasMetadataRemoved": false,
+    "CreatedBy": "mhoefer@mphhub.org"
+  }
+}
+ */
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PackageVersionCreate {
+    status: i32,
+    result: PackageVersionCreateResult,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct PackageVersionCreateResult {
+    pub id: String,
+    pub status: String,
+    pub package2_id: String,
+    pub package2_version_id: String,
+    pub subscriber_package_version_id: String,
+}
+
+/*
+{
+  "status": 0,
+  "result": {
+    "attributes": {
+      "type": "Package2Version",
+      "url": "/services/data/v53.0/tooling/sobjects/Package2Version/05i3t000000XZdxAAG"
+    },
+    "Package2Id": "0Ho3t000000XZNrCAO",
+    "SubscriberPackageVersionId": "04t3t000002zQqpAAE",
+    "Name": "Version One",
+    "Description": null,
+    "Tag": null,
+    "Branch": null,
+    "AncestorId": "N/A",
+    "ValidationSkipped": false,
+    "MajorVersion": 1,
+    "MinorVersion": 0,
+    "PatchVersion": 0,
+    "BuildNumber": 2,
+    "IsReleased": false,
+    "CodeCoverage": null,
+    "HasPassedCodeCoverageCheck": false,
+    "Package2": {
+      "attributes": {
+        "type": "Package2",
+        "url": "/services/data/v53.0/tooling/sobjects/Package2/0Ho3t000000XZNrCAO"
+      },
+      "IsOrgDependent": "No"
+    },
+    "ReleaseVersion": 53,
+    "BuildDurationInSeconds": 60,
+    "HasMetadataRemoved": "N/A",
+    "CreatedBy": "mhoefer@mphhub.org",
+    "Version": "1.0.0.2",
+    "AncestorVersion": "N/A"
+  }
+}
+ */
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PackageVersion {
+    status: i32,
+    result: PackageVersionResult,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct PackageVersionResult {
+    pub package2_id: String,
+    pub subscriber_package_version_id: String,
+    pub name: String,
+    pub version: String,
+    pub ancestor_version: String,
+    pub is_released: bool,
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+pub enum OrgStatus {
+    Active,
+    Deleted,
+    Connected,
+    Disconnected,
+    ENOENT,
+}
+
+impl FromStr for OrgStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(status: &str) -> Result<OrgStatus, Self::Err> {
+        match status {
+            "Connected" => Ok(OrgStatus::Connected),
+            "Disconnected" => Ok(OrgStatus::Disconnected),
+            _ => Err(anyhow!("Invalid status string")),
         }
     }
-    Ok(false)
+}
+
+pub fn sfdx_display_org(
+    layers_dir: &PathBuf,
+    app_dir: &PathBuf,
+    user: &str,
+) -> Option<OrgDisplayResult> {
+    let mut cmd = sfdx(layers_dir);
+    match cmd
+        .args(vec!["force:org:display", "-u", user, "--json"])
+        .output()
+    {
+        Ok(output) => {
+            let s = std::str::from_utf8(output.stdout.as_slice()).unwrap();
+            let res: OrgDisplay = serde_json::from_str(s).unwrap();
+            res.result
+        }
+        Err(e) => {
+            panic!(
+                "failed to execute {:?} from {:?} due to {}",
+                cmd, app_dir, e
+            );
+        }
+    }
+}
+
+pub fn sfdx_check_org(layers_dir: &PathBuf, app_dir: &PathBuf, user: &str) -> Option<OrgStatus> {
+    if let Some(org_info) = sfdx_display_org(layers_dir, app_dir, user) {
+        if let Some(status) = org_info.connected_status {
+            Some(status)
+        } else if let Some(status) = org_info.status {
+            Some(status)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn sfdx(layers_dir: &PathBuf) -> Command {
+    let sfdx_bin = layers_dir.join("sfdx").join("bin");
+    append_env_path(sfdx_bin);
+
+    Command::new("sfdx")
+}
+
+fn append_env_path(bin: PathBuf) {
+    let path = env::var_os("PATH").unwrap_or(OsString::from(""));
+    let mut paths = env::split_paths(&path).collect::<Vec<_>>();
+    if !paths.contains(&bin) {
+        paths.push(bin);
+        let new_path = env::join_paths(paths).unwrap();
+        env::set_var("PATH", &new_path);
+    }
+}
+
+pub fn sfdx_auth(
+    layers_dir: &PathBuf,
+    app_dir: &PathBuf,
+    client_id: &str,
+    key_file: &str,
+    instance_url: &str,
+    user_name: &str,
+    alias: Option<String>,
+) -> Result<(), anyhow::Error> {
+    let mut logger = BuildLogger::new(true, true);
+
+    // Exit early if we are already authenticated.
+    if env::var_os("SFDX_AUTH_FORCE").is_some() {
+        logger.info("re-authenticating hub")?;
+    } else if let Some(OrgStatus::Connected) = sfdx_check_org(layers_dir, app_dir, user_name) {
+        return Ok(());
+    }
+
+    let key_file = match env::var_os("SFDX_AUTH_KEYFILE") {
+        Some(os_str) => {
+            // Try the KEYFILE var first
+            let p = PathBuf::from(os_str);
+            if p.is_file() {
+                logger.info("found SFDX_AUTH_KEYFILE")?;
+                Some(p)
+            } else {
+                // Location given but no such file exists
+                None
+            }
+        }
+        None => match env::var_os("SFDX_AUTH_ENC_KEYFILE") {
+            Some(os_str) => {
+                // Try the ENC_KEYFILE var next
+                let p = PathBuf::from(os_str);
+                decrypt_key(layers_dir, &mut logger, p)?
+            }
+            None => {
+                // Lastly, try the configured key file value
+                let p = PathBuf::from(key_file);
+                decrypt_key(layers_dir, &mut logger, p)?
+            }
+        },
+    };
+
+    let url_file = match env::var_os("SFDX_AUTH_URLFILE") {
+        Some(os_str) => {
+            let p = PathBuf::from(os_str);
+            if p.is_file() {
+                logger.info("found SFDX_AUTH_URLFILE")?;
+                Some(p)
+            } else {
+                // Location given but no such file exists
+                None
+            }
+        }
+        None => match env::var_os("SFDX_AUTH_URL") {
+            Some(os_str) => {
+                let p = layers_dir.join("sfdx").join(".sfdx_auth_url");
+                write_file(os_str.to_str().unwrap().as_bytes(), &p);
+                logger.info("found SFDX_AUTH_URL")?;
+                Some(p)
+            }
+            None => None,
+        },
+    };
+
+    let access_token = match env::var_os("SFDX_ACCESS_TOKEN") {
+        Some(os_str) => {
+            logger.info("found SFDX_ACCESS_TOKEN")?;
+            Some(os_str.to_str().unwrap().to_owned())
+        }
+        None => None,
+    };
+
+    if let Some(key_file) = key_file {
+        logger.info("authenticating hub with key")?;
+        let mut cmd = sfdx(layers_dir);
+        cmd.current_dir(app_dir)
+            .arg("auth:jwt:grant")
+            .arg("--clientid")
+            .arg(client_id)
+            .arg("--jwtkeyfile")
+            .arg(key_file)
+            .arg("--username")
+            .arg(user_name)
+            .arg("--instanceurl")
+            .arg(instance_url)
+            .arg("--setdefaultdevhubusername");
+        if let Some(s) = alias {
+            logger.info(format!("using alias {}", &s))?;
+            cmd.arg("--setalias").arg(s);
+        }
+        match cmd.output() {
+            Ok(output) => {
+                logger.output("authenticated hub", output)?;
+                Ok(())
+            }
+            Err(e) => Err(anyhow::Error::new(e)),
+        }
+    } else if let Some(url_file) = url_file {
+        logger.info("authenticating hub with url")?;
+        let mut cmd = sfdx(layers_dir);
+        match cmd
+            .current_dir(app_dir)
+            .arg("auth:sfdxurl:store")
+            .arg("-f")
+            .arg(url_file)
+            .arg("--setdefaultdevhubusername")
+            .output()
+        {
+            Ok(output) => {
+                logger.output("authenticated hub", output)?;
+                Ok(())
+            }
+            Err(e) => Err(anyhow::Error::new(e)),
+        }
+    } else if let Some(access_token) = access_token {
+        logger.info("authenticating hub with token")?;
+        let mut cmd = sfdx(layers_dir);
+        match cmd
+            .current_dir(app_dir)
+            .env("SFDX_ACCESS_TOKEN", access_token)
+            .arg("auth:accesstoken:store")
+            .arg("--instanceurl")
+            .arg(instance_url)
+            .arg("--setdefaultdevhubusername")
+            .arg("--noprompt")
+            .output()
+        {
+            Ok(output) => {
+                logger.output("authenticated hub", output)?;
+                Ok(())
+            }
+            Err(e) => Err(anyhow::Error::new(e)),
+        }
+    } else {
+        Err(anyhow!("Unable to authenticate hub.  Hub should be pre-authenticated, \
+        or one of SFDX_AUTH_KEYFILE, SFDX_AUTH_ENC_KEYFILE, SFDX_AUTH_URL, SFDX_AUTH_URLFILE, or SFDX_ACCESS_TOKEN must be provided."))
+    }
+}
+
+fn decrypt_key(
+    layers_dir: &PathBuf,
+    logger: &mut BuildLogger,
+    p: PathBuf,
+) -> Result<Option<PathBuf>, anyhow::Error> {
+    let enc_file = EncFile::from_env(p);
+    if enc_file.is_ok() {
+        logger.info("found SFDX_AUTH_ENC_KEYFILE, OPENSSL_ENC_KEY and OPENSSL_ENC_IV")?;
+        let target_file = layers_dir.join("sfdx").join(".sfdx_auth_key");
+        decrypt(&enc_file.unwrap(), &target_file)?;
+        Ok(Some(target_file))
+    } else {
+        // Location given but no such file exists
+        Ok(None)
+    }
+}
+
+pub fn sfdx_create_org_if_needed(
+    layers_dir: &PathBuf,
+    app_dir: &PathBuf,
+    hub_user: &str,
+    scratch_org_def_path: &str,
+    scratch_org_duration: i32,
+    scratch_org_alias: &str,
+    logger: &mut BuildLogger,
+) -> Result<bool, anyhow::Error> {
+    let created = match sfdx_check_org(layers_dir, app_dir, scratch_org_alias) {
+        Some(OrgStatus::Active) => false,
+        _ => {
+            logger.info("---> Creating scratch org")?;
+            let output = sfdx_create_org(
+                layers_dir,
+                app_dir,
+                hub_user,
+                scratch_org_def_path,
+                scratch_org_duration,
+                scratch_org_alias,
+            )?;
+            logger.output("creating environment", output)?;
+            true
+        }
+    };
+    Ok(created)
 }
 
 pub fn sfdx_create_org(
+    layers_dir: &PathBuf,
     app_dir: &PathBuf,
-    devhub_alias: &str,
+    hub_user: &str,
     scratch_org_def_path: &str,
     scratch_org_duration: i32,
     scratch_org_alias: &str,
 ) -> Result<Output, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
+    let mut cmd = sfdx(layers_dir);
     cmd.current_dir(app_dir)
         .arg("force:org:create")
         .arg("-v")
-        .arg(devhub_alias)
+        .arg(hub_user)
         .arg("-f")
         .arg(scratch_org_def_path)
         .arg("-d")
@@ -144,12 +517,12 @@ pub fn sfdx_create_org(
     match cmd.output() {
         Ok(output) => {
             let status = output.status.code().unwrap();
-            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
             if status != 0 {
+                let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
                 Err(anyhow::anyhow!(
-                    "failed to create scratch org on {} from {}:\n{}",
-                    devhub_alias,
-                    scratch_org_def_path,
+                    "failed to execute {:?} from {:?}:\n{}",
+                    cmd,
+                    app_dir,
                     stderr
                 ))
             } else {
@@ -157,24 +530,25 @@ pub fn sfdx_create_org(
             }
         }
         Err(e) => Err(anyhow::anyhow!(
-            "failed to create scratch org on {} from {} due to {}",
-            devhub_alias,
-            scratch_org_def_path,
+            "failed to execute {:?} from {:?} due to {}",
+            cmd,
+            app_dir,
             e
         )),
     }
 }
 
 pub fn sfdx_delete_org(
+    layers_dir: &PathBuf,
     app_dir: &PathBuf,
-    devhub_alias: &str,
+    hub_user: &str,
     scratch_org_alias: &str,
 ) -> Result<Output, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
+    let mut cmd = sfdx(layers_dir);
     cmd.current_dir(app_dir)
         .arg("force:org:delete")
         .arg("-v")
-        .arg(devhub_alias)
+        .arg(hub_user)
         .arg("-u")
         .arg(scratch_org_alias)
         .arg("-p");
@@ -185,7 +559,7 @@ pub fn sfdx_delete_org(
             if status != 0 {
                 return Err(anyhow::anyhow!(
                     "failed to delete scratch org on {} named {}:\n {}",
-                    devhub_alias,
+                    hub_user,
                     scratch_org_alias,
                     stderr
                 ));
@@ -195,7 +569,7 @@ pub fn sfdx_delete_org(
         Err(e) => {
             eprintln!(
                 "failed to delete scratch org on {} named {}",
-                devhub_alias, scratch_org_alias
+                hub_user, scratch_org_alias
             );
             Err(anyhow::anyhow!(e))
         }
@@ -203,11 +577,12 @@ pub fn sfdx_delete_org(
 }
 
 pub fn sfdx_push_source(
+    layers_dir: &PathBuf,
     app_dir: &PathBuf,
     scratch_org_alias: &str,
     wait_seconds: i32,
 ) -> Result<Output, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
+    let mut cmd = sfdx(layers_dir);
     let mut child = cmd
         .current_dir(app_dir)
         .arg("force:source:push")
@@ -247,17 +622,18 @@ pub struct FindPackageResult {
 }
 
 pub fn sfdx_find_package(
+    layers_dir: &PathBuf,
     app_dir: &PathBuf,
-    devhub_alias: &String,
+    hub_user: &String,
     package_name: &String,
 ) -> Result<SfdxResponse<FindPackageResult>, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
+    let mut cmd = sfdx(layers_dir);
     let output = cmd
         .current_dir(app_dir)
         .arg("force:package:list")
         .arg("--json")
         .arg("-v")
-        .arg(devhub_alias)
+        .arg(hub_user)
         .output()
         .expect("failed to execute command");
 
@@ -292,20 +668,21 @@ pub fn sfdx_find_package(
 }
 
 pub fn sfdx_create_package(
+    layers_dir: &PathBuf,
     app_dir: &PathBuf,
-    devhub_alias: &String,
+    hub_user: &String,
     package_name: &String,
     package_desc: &String,
     package_type: &String,
     package_root: &String,
 ) -> Result<SfdxResponse<CreatePackageResult>, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
+    let mut cmd = sfdx(layers_dir);
     let mut child = cmd
         .current_dir(app_dir)
         .arg("force:package:create")
         .arg("--json")
         .arg("-v")
-        .arg(devhub_alias)
+        .arg(hub_user)
         .arg("-n")
         .arg(package_name)
         .arg("-d")
@@ -349,23 +726,24 @@ fn output_stderr(child: &mut Child) {
 }
 
 pub fn sfdx_create_package_version(
+    layers_dir: &PathBuf,
     app_dir: &PathBuf,
-    devhub_alias: &String,
+    hub_user: &String,
     package_id: &String,
     org_def_path: &String,
     version_name: &String,
     version_number: &String,
     installation_key: &String,
     wait_seconds: i32,
-) -> Result<serde_json::Value, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
+) -> Result<PackageVersionResult, anyhow::Error> {
+    let mut cmd = sfdx(layers_dir);
     cmd.current_dir(&app_dir)
         .arg("force:package:version:create")
         .arg("--json")
         .arg("-p")
         .arg(package_id)
         .arg("-v")
-        .arg(devhub_alias)
+        .arg(hub_user)
         .arg("-f")
         .arg(org_def_path)
         .arg("-a")
@@ -383,24 +761,207 @@ pub fn sfdx_create_package_version(
 
     if output.status.success() {
         let stdout = String::from_utf8(output.stdout)?;
-        let v: serde_json::Value = serde_json::from_str(stdout.as_str())?;
-        Ok(v)
+        let v: PackageVersionCreate = serde_json::from_str(stdout.as_str())?;
+        let id = v.result.subscriber_package_version_id; // 04t...
+        sfdx_fetch_package_version(layers_dir, app_dir, hub_user, &id)
     } else {
+        let stdout = String::from_utf8(output.stdout)?;
+        let details: serde_json::Value = serde_json::from_str(stdout.as_str())?;
         Err(anyhow::anyhow!(
-            "failed to create new package version of {}:\n Exited with {}",
+            "failed to create new package version of {}\n{}: {}",
             package_id,
-            output.status.code().unwrap()
+            details["name"].as_str().unwrap(),
+            details["message"].as_str().unwrap(),
         ))
     }
 }
 
+pub fn sfdx_fetch_package_version(
+    layers_dir: &PathBuf,
+    app_dir: &PathBuf,
+    hub_user: &String,
+    id: &String,
+) -> Result<PackageVersionResult, anyhow::Error> {
+    let mut cmd = sfdx(layers_dir);
+    cmd.current_dir(&app_dir)
+        .arg("force:package:version:report")
+        .arg("--json")
+        .arg("-p")
+        .arg(id)
+        .arg("-v")
+        .arg(hub_user);
+    let output = cmd.output().expect("failed to execute command");
+
+    if output.status.success() {
+        let stdout = String::from_utf8(output.stdout)?;
+        let v: PackageVersion = serde_json::from_str(stdout.as_str())?;
+        Ok(v.result)
+    } else {
+        let stdout = String::from_utf8(output.stdout)?;
+        let details: serde_json::Value = serde_json::from_str(stdout.as_str())?;
+        Err(anyhow::anyhow!(
+            "failed to fetch package version {}\n{}: {}",
+            id,
+            details["name"].as_str().unwrap(),
+            details["message"].as_str().unwrap(),
+        ))
+    }
+}
+
+/* {
+    "status": 0,
+    "result": ApexTestRunResult
+} */
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ApexTestRun {
+    pub status: i32,
+    pub result: ApexTestRunResult,
+}
+
+/* {
+    "summary": ApexTestSummary,
+    "tests": [ ApexTestResult ],
+} */
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ApexTestRunResult {
+    pub summary: ApexTestSummary,
+    pub tests: Vec<ApexTestResult>,
+}
+
+impl Into<TestOutcome> for ApexTestRunResult {
+    fn into(self) -> TestOutcome {
+        let mut results = TestResults::new();
+        for test in self.tests {
+            match test.outcome {
+                ApexTestOutcome::Pass => results
+                    .passed
+                    .push(TestResult::new(test.full_name, TestStatus::Pass)),
+                ApexTestOutcome::Fail => results
+                    .failed
+                    .push(TestResult::new(test.full_name, TestStatus::Fail)),
+                ApexTestOutcome::Ignore => results
+                    .ignored
+                    .push(TestResult::new(test.full_name, TestStatus::Ignore)),
+            }
+        }
+        match self.summary.outcome {
+            ApexTestSummaryOutcome::Passed => TestOutcome::Pass(results),
+            ApexTestSummaryOutcome::Failed => TestOutcome::Fail(results),
+        }
+    }
+}
+/* {
+  "outcome": "Passed",
+  "testsRan": 2,
+  "passing": 2,
+  "failing": 0,
+  "skipped": 0,
+  "passRate": "100%",
+  "failRate": "0%",
+  "testStartTime": "Thu Jan 06 2022 2:44:54 PM",
+  "testExecutionTime": "24 ms",
+  "testTotalTime": "24 ms",
+  "commandTime": "244 ms",
+  "hostname": "https://velocity-energy-3793-dev-ed.cs77.my.salesforce.com",
+  "orgId": "00D0t000000MeWZEA0",
+  "username": "test-ahmet6briymu@example.com",
+  "testRunId": "7070t00001vpgqx",
+  "userId": "0050t000009C5sDAAS",
+  "testRunCoverage": "100%",
+  "orgWideCoverage": "100%"
+} */
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ApexTestSummary {
+    pub outcome: ApexTestSummaryOutcome,
+    pub tests_ran: i32,
+    pub passing: i32,
+    pub failing: i32,
+    pub skipped: i32,
+    pub pass_rate: String,
+    pub fail_rate: String,
+    pub test_start_time: String,
+    pub test_execution_time: String,
+    pub test_total_time: String,
+    pub command_time: String,
+    pub hostname: String,
+    pub org_id: String,
+    pub username: String,
+    pub test_run_id: String,
+    pub user_id: String,
+    pub test_run_coverage: String,
+    pub org_wide_coverage: String,
+}
+
+/*
+{
+    "Id": "07M0t00000FfffwEAB",
+    "QueueItemId": "7090t0000022UUlAAM",
+    "StackTrace": null,
+    "Message": null,
+    "AsyncApexJobId": "7070t00001vpgqxAAA",
+    "MethodName": "testBehavior",
+    "Outcome": "Pass",
+    "ApexClass": {
+      "Id": "01p0t00000FKeStAAL",
+      "Name": "TestTests",
+      "NamespacePrefix": null
+    },
+    "RunTime": 11,
+    "FullName": "TestTests.testBehavior"
+}
+ */
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ApexTestResult {
+    pub id: String,
+    pub queue_item_id: String,
+    pub stack_trace: Option<String>,
+    pub message: Option<String>,
+    pub async_apex_job_id: String,
+    pub method_name: String,
+    pub outcome: ApexTestOutcome,
+    pub apex_class: ApexTestClass,
+    pub run_time: i32,
+    pub full_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ApexTestSummaryOutcome {
+    Passed,
+    Failed,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ApexTestOutcome {
+    Pass,
+    Fail,
+    Ignore,
+}
+
+/*{
+    Id: 01p0t00000FKeStAAL,
+    Name: TestTests,
+    NamespacePrefix: null
+}*/
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ApexTestClass {
+    id: String,
+    name: String,
+    namespace_prefix: Option<String>,
+}
+
 pub fn sfdx_test_apex(
+    layers_dir: &PathBuf,
     app_dir: &PathBuf,
     scratch_org_alias: &str,
-    results_path: PathBuf,
+    results_path: Option<String>,
+    results_format: TestResultsFormat,
     wait_seconds: i32,
-) -> Result<Output, anyhow::Error> {
-    let mut cmd = Command::new("sfdx");
+) -> Result<ApexTestRunResult, anyhow::Error> {
+    let mut cmd = sfdx(layers_dir);
     cmd.current_dir(app_dir)
         .arg("force:apex:test:run")
         .arg("-u")
@@ -409,17 +970,20 @@ pub fn sfdx_test_apex(
         .arg("RunLocalTests")
         .arg("-w")
         .arg(wait_seconds.to_string())
+        .arg("--json")
         .arg("-r")
-        .arg("tap")
-        .arg("-d")
-        .arg(results_path.as_os_str())
+        .arg(results_format.to_string())
         .arg("-c")
         .arg("-v");
+    if let Some(path) = results_path {
+        cmd.arg("-d").arg(app_dir.join(path));
+    }
 
     match cmd.output() {
         Ok(output) => {
             let status = output.status.code().unwrap();
-            let stderr = String::from_utf8(output.stderr.to_owned()).unwrap();
+            let stdout = String::from_utf8(output.stdout)?;
+            let stderr = String::from_utf8(output.stderr)?;
             // This is a Hack, to work around the platform bug that throws an error when no apex tests exist.
             if status != 0
                 && !stderr
@@ -431,7 +995,8 @@ pub fn sfdx_test_apex(
                     stderr
                 ));
             }
-            Ok(output)
+            let result: ApexTestRun = serde_json::from_str(stdout.as_str())?;
+            Ok(result.result)
         }
         Err(e) => {
             eprintln!("failed to run apex tests on {}", scratch_org_alias);
@@ -442,11 +1007,13 @@ pub fn sfdx_test_apex(
 
 #[cfg(test)]
 mod tests {
+    use crate::layers::sfdx::append_env_path;
     use libcnb::data::buildpack::BuildpackToml;
     use libcnb::data::buildpack_plan::BuildpackPlan;
     use libcnb::{BuildContext, GenericPlatform, Platform};
-    use std::fs;
+    use std::ffi::OsString;
     use std::path::PathBuf;
+    use std::{env, fs};
     use tempfile::TempDir;
 
     fn _setup_context(tmp_dir: &TempDir) -> BuildContext<GenericPlatform, toml::value::Table> {
@@ -481,17 +1048,27 @@ mod tests {
     }
 
     #[test]
-    fn test_if_runtime_exists_and_checksum_match() {
-        // TODO need mocking to avoid outbound calls
-    }
+    fn test_append_env_path() {
+        let bin = PathBuf::from("./sfdx/test_append_env_path/bin");
+        let bin2 = bin.clone();
 
-    #[test]
-    fn test_if_checksum_does_not_match() {
-        // TODO need mocking to avoid outbound calls
-    }
+        let mut path = env::var_os("PATH").unwrap_or(OsString::from(""));
+        let mut paths = env::split_paths(&path).collect::<Vec<_>>();
+        assert!(!paths.contains(&bin));
 
-    #[test]
-    fn test_if_runtime_is_missing() {
-        // TODO need mocking to avoid outbound calls
+        append_env_path(bin);
+
+        path = env::var_os("PATH").unwrap();
+        paths = env::split_paths(&path).collect::<Vec<_>>();
+        assert!(paths.contains(&bin2));
+        let len1 = path.len();
+
+        append_env_path(bin2);
+        path = env::var_os("PATH").unwrap();
+        let len2 = path.len();
+        assert_eq!(
+            len1, len2,
+            "Adding path segment twice should not add to path var"
+        );
     }
 }

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use libcnb::compress_and_put;
 use reqwest::{IntoUrl, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -39,11 +40,11 @@ pub fn create_sources() -> Result<HerokuSources, anyhow::Error> {
             let sources: HerokuSources = serde_json::from_str(str.as_str())?;
             Ok(sources)
         }
-        _ => Err(anyhow::Error::msg(format!(
+        _ => Err(anyhow!(
             "Unexpected status {}.  {}.",
             response.status(),
             response.text()?
-        ))),
+        )),
     }
 }
 
@@ -164,11 +165,11 @@ pub fn build_source(source_url: &str, source_version: &str) -> Result<HerokuBuil
             let build: HerokuBuild = serde_json::from_str(str.as_str())?;
             Ok(build)
         }
-        _ => Err(anyhow::Error::msg(format!(
+        _ => Err(anyhow!(
             "Unexpected status {}.  {}.",
             response.status(),
             response.text()?
-        ))),
+        )),
     }
 }
 

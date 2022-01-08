@@ -112,7 +112,7 @@ impl Default for SFPackageAppConfig {
 impl SFPackageAppConfig {
     pub fn from_dir(app_dir: &PathBuf) -> Self {
         let file = app_dir.join("app.toml");
-        if let Some(file_text) = read_file_to_string(file.as_path()) {
+        if let Ok(file_text) = read_file_to_string(file.as_path()) {
             let mut config: SFPackageAppConfig = toml::from_str(&file_text).unwrap();
             config.package.set_defaults(&config.default);
             config.dev.set_defaults(&config.default);
@@ -127,7 +127,15 @@ impl SFPackageAppConfig {
 #[derive(Deserialize, Debug, Serialize)]
 pub struct DefaultConfig {
     #[serde(default)]
-    pub hub_alias: String,
+    pub hub_client_id: String,
+    #[serde(default)]
+    pub hub_key: String,
+    #[serde(default)]
+    pub hub_instance_url: String,
+    #[serde(default)]
+    pub hub_user: String,
+    #[serde(default)]
+    pub hub_alias: Option<String>,
     #[serde(default)]
     pub org_def_path: String,
     #[serde(default)]
@@ -137,7 +145,11 @@ pub struct DefaultConfig {
 impl Default for DefaultConfig {
     fn default() -> Self {
         DefaultConfig {
-            hub_alias: "hub".to_string(),
+            hub_client_id: "".to_string(),
+            hub_key: "".to_string(),
+            hub_instance_url: "https://login.salesforce.com".to_string(),
+            hub_user: "".to_string(),
+            hub_alias: None,
             org_def_path: "config/project-scratch-def.json".to_string(),
             op_wait_seconds: 120,
         }
@@ -153,7 +165,15 @@ pub struct PackageConfig {
     #[serde(default)]
     pub create_if_needed: bool,
     #[serde(default)]
-    pub hub_alias: String,
+    pub hub_client_id: String,
+    #[serde(default)]
+    pub hub_key: String,
+    #[serde(default)]
+    pub hub_instance_url: String,
+    #[serde(default)]
+    pub hub_user: String,
+    #[serde(default)]
+    pub hub_alias: Option<String>,
     #[serde(default)]
     pub org_def_path: String,
     #[serde(default)]
@@ -176,7 +196,19 @@ pub struct PackageConfig {
 
 impl PackageConfig {
     fn set_defaults(&mut self, config: &DefaultConfig) {
-        if self.hub_alias.is_empty() {
+        if self.hub_client_id.is_empty() {
+            self.hub_client_id = config.hub_client_id.clone();
+        }
+        if self.hub_key.is_empty() {
+            self.hub_key = config.hub_key.clone();
+        }
+        if self.hub_instance_url.is_empty() {
+            self.hub_instance_url = config.hub_instance_url.clone();
+        }
+        if self.hub_user.is_empty() {
+            self.hub_user = config.hub_user.clone();
+        }
+        if let None = self.hub_alias {
             self.hub_alias = config.hub_alias.clone();
         }
         if self.org_def_path.is_empty() {
@@ -197,7 +229,15 @@ impl PackageConfig {
 #[derive(Deserialize, Debug, Serialize, Default)]
 pub struct DevConfig {
     #[serde(default)]
-    pub hub_alias: String,
+    pub hub_client_id: String,
+    #[serde(default)]
+    pub hub_key: String,
+    #[serde(default)]
+    pub hub_instance_url: String,
+    #[serde(default)]
+    pub hub_user: String,
+    #[serde(default)]
+    pub hub_alias: Option<String>,
     #[serde(default)]
     pub org_def_path: String,
     #[serde(default)]
@@ -208,12 +248,28 @@ pub struct DevConfig {
     pub org_duration_days: i32,
     #[serde(default)]
     pub run_tests: bool,
+    #[serde(default)]
+    pub test_results_path: Option<String>,
+    #[serde(default)]
+    pub test_results_format: TestResultsFormat,
 }
 
 impl DevConfig {
     fn set_defaults(&mut self, config: &DefaultConfig) {
-        if self.hub_alias.is_empty() {
+        if self.hub_client_id.is_empty() {
+            self.hub_client_id = config.hub_client_id.clone();
+        }
+        if self.hub_key.is_empty() {
+            self.hub_key = config.hub_key.clone();
+        }
+        if self.hub_user.is_empty() {
+            self.hub_user = config.hub_user.clone();
+        }
+        if let None = self.hub_alias {
             self.hub_alias = config.hub_alias.clone();
+        }
+        if self.hub_instance_url.is_empty() {
+            self.hub_instance_url = config.hub_instance_url.clone();
         }
         if self.org_def_path.is_empty() {
             self.org_def_path = config.org_def_path.clone();
@@ -230,7 +286,15 @@ impl DevConfig {
 #[derive(Deserialize, Debug, Serialize, Default)]
 pub struct CIConfig {
     #[serde(default)]
-    pub hub_alias: String,
+    pub hub_instance_url: String,
+    #[serde(default)]
+    pub hub_client_id: String,
+    #[serde(default)]
+    pub hub_key: String,
+    #[serde(default)]
+    pub hub_user: String,
+    #[serde(default)]
+    pub hub_alias: Option<String>,
     #[serde(default)]
     pub org_def_path: String,
     #[serde(default)]
@@ -239,12 +303,28 @@ pub struct CIConfig {
     pub org_alias: String,
     #[serde(default)]
     pub org_duration_days: i32,
+    #[serde(default)]
+    pub test_results_path: Option<String>,
+    #[serde(default)]
+    pub test_results_format: TestResultsFormat,
 }
 
 impl CIConfig {
     fn set_defaults(&mut self, config: &DefaultConfig) {
-        if self.hub_alias.is_empty() {
+        if self.hub_client_id.is_empty() {
+            self.hub_client_id = config.hub_client_id.clone();
+        }
+        if self.hub_key.is_empty() {
+            self.hub_key = config.hub_key.clone();
+        }
+        if self.hub_user.is_empty() {
+            self.hub_user = config.hub_user.clone();
+        }
+        if let None = self.hub_alias {
             self.hub_alias = config.hub_alias.clone();
+        }
+        if self.hub_instance_url.is_empty() {
+            self.hub_instance_url = config.hub_instance_url.clone();
         }
         if self.org_def_path.is_empty() {
             self.org_def_path = config.org_def_path.clone();
@@ -258,6 +338,39 @@ impl CIConfig {
         if self.org_duration_days <= 0 {
             self.org_duration_days = 1;
         }
+        if self.test_results_path.is_none() {
+            self.test_results_path = Some("test-results".to_string());
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum TestResultsFormat {
+    Human,
+    TAP,
+    JUnit,
+    JSON,
+}
+
+impl Default for TestResultsFormat {
+    fn default() -> Self {
+        TestResultsFormat::Human
+    }
+}
+
+impl std::fmt::Display for TestResultsFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                TestResultsFormat::Human => "human",
+                TestResultsFormat::TAP => "tap",
+                TestResultsFormat::JUnit => "junit",
+                TestResultsFormat::JSON => "json",
+            }
+        )
     }
 }
 
@@ -324,41 +437,8 @@ mod tests {
 }
 "#;
         let temp_app_dir = tempdir().unwrap().into_path();
-        let mut f = temp_app_dir.join("sfdx-project.json");
-        write_file(project_file_content, &f);
-
-        let buildpack_file_content = r#"
-{
-    "package": {
-        "name": "SfPackageBuildpackPackage",
-        "description": "SF Package Buildpack Package",
-        "type": "Managed",
-        "directory": "force-app"
-    },
-    "dev": {
-        "hub_alias": "hub",
-        "org_alias": "dev",
-        "org_def_path": "config/project-scratch-def.json",
-        "org_duration": 15,
-        "op_wait_seconds": 120,
-        "run_tests": false
-    },
-    "ci": {
-        "hub_alias": "hub",
-        "org_alias": "ci",
-        "org_def_path": "config/project-scratch-def.json",
-        "org_duration_days": 1,
-        "op_wait_seconds": 120
-    },
-    "package": {
-        "hub_alias": "hub",
-        "org_def_path": "config/project-scratch-def.json",
-        "op_wait_seconds": 120
-    }
-}
-"#;
-        f = temp_app_dir.join("sfdx-buildpack.json");
-        write_file(buildpack_file_content, &f);
+        let f = temp_app_dir.join("sfdx-project.json");
+        write_file(project_file_content.as_bytes(), &f);
 
         fs::create_dir(temp_app_dir.join("force-app")).unwrap();
         fs::create_dir(temp_app_dir.join("force-app/vendor")).unwrap();

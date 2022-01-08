@@ -68,17 +68,20 @@ use std::path::PathBuf;
 use std::fs;
 use std::collections::HashMap;
 use colored::*;
-use flate2::read::GzDecoder;
-use tar::Archive;
 
 fn main() {
-    let destination = PathBuf::from("target");
+    copy_files("./target-cargo", "target");
+    copy_files("./target-cargo/x86_64-unknown-linux-musl", "target/x86_64-unknown-linux-musl");
+}
+
+fn copy_files(from_root: &str, to_root: &str) {
+    let destination = PathBuf::from(to_root);
     if destination.exists() {
         fs::remove_dir_all(&destination).unwrap();
     }
     fs::create_dir_all(&destination.join("bin")).unwrap();
     let mut files = HashMap::new();
-    files.insert(PathBuf::from("./target-cargo/x86_64-unknown-linux-musl").join(env!("CARGO_PROFILE")).join(env!("CARGO_MAKE_CRATE_NAME")), destination.join("bin/build"));
+    files.insert(PathBuf::from(from_root).join(env!("CARGO_PROFILE")).join(env!("CARGO_MAKE_CRATE_NAME")), destination.join("bin/build"));
     files.insert(PathBuf::from("./buildpack.toml"), destination.join("buildpack.toml"));
     files.insert(PathBuf::from("./package.toml"), destination.join("package.toml"));
     for (from, to) in &files {
@@ -87,6 +90,7 @@ fn main() {
     fs::hard_link(destination.join("bin/build"), destination.join("bin/detect")).unwrap();
     fs::hard_link(destination.join("bin/build"), destination.join("bin/test")).unwrap();
     fs::hard_link(destination.join("bin/build"), destination.join("bin/publish")).unwrap();
+    fs::hard_link(destination.join("bin/build"), destination.join("bin/cli")).unwrap();
     println!("{}", "Successfully created buildpack directory".bold().green());
     println!("{}", "========================================".bold().green());
     println!("To try out your buildpack run:");

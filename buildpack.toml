@@ -1,5 +1,5 @@
 # Buildpack API version
-api = "0.5"
+api = "0.6"
 
 [buildpack]
 id = "sf/package"
