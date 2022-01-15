@@ -7,7 +7,7 @@
 # Invoked as Cloud Native Buildpack:
 #   bin/detect PLATFORM_DIR BUILD_PLAN
 #
-set -euxo pipefail
+set -eux pipefail
 if [ `uname` -eq "Darwin" ]; then
   LIB_DIR = "./lib/x86_64-darwin"
 else

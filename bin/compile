@@ -3,7 +3,7 @@
 #
 # bin/compile BUILD_DIR CACHE_DIR ENV_DIR
 #
-set -euxo pipefail
+set -eux pipefail
 if [ `uname` -eq "Darwin" ]; then
   LIB_DIR = "./lib/x86_64-darwin"
 else

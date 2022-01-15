@@ -3,7 +3,7 @@
 #
 # bin/release BUILD_DIR
 #
-set -euxo pipefail
+set -eux pipefail
 cat << EOF
 ---
 default_process_types:
