@@ -4,7 +4,7 @@
 # bin/build LAYERS_DIR PLATFORM_DIR BUILD_PLAN
 #
 set -eux pipefail
-if [ "`uname`" -eq "Darwin" ]; then
+if [ "`uname`" = "Darwin" ]; then
   LIB_DIR = "./lib/x86_64-darwin"
 else
   LIB_DIR = "./lib/x86_64-unknown-linux-musl"
