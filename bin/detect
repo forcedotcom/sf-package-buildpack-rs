@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # HEROKU BUILDPACK/CLOUD NATIVE BUILDPACK DETECT COMMAND
 #
 # Invoked as Heroku Buildpack:
@@ -7,11 +7,12 @@
 # Invoked as Cloud Native Buildpack:
 #   bin/detect PLATFORM_DIR BUILD_PLAN
 #
-set -eux pipefail
+set -eu pipefail
+
 if [ "`uname`" = "Darwin" ]; then
-  LIB_DIR = "./lib/x86_64-darwin"
+  export LIB_DIR="./lib/x86_64-darwin"
 else
-  LIB_DIR = "./lib/x86_64-unknown-linux-musl"
+  export LIB_DIR="./lib/x86_64-unknown-linux-musl"
 fi
 if [ $# -eq 2 ]
 then
