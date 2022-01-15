@@ -189,24 +189,12 @@ pub fn build() -> Result<HerokuBuild, anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
 
     #[test]
-    fn it_stuff_stuffs() {
-        let json = r#"
-            {
-              "buildpacks": [
-                    {
-                        "url": "https://github.com/forcedotcom/sf-package-buildpacks-rs.git",
-                    }
-                ],
-                "source_blob": {
-                    "url": "https://s3-external-1.amazonaws.com/heroku-sources-production/ad233/ad23365b-659b-4252-a977-4f52dfa341ee?AWSAccessKeyId=AKIAJ6LKZGKGPARPZE4A&Signature=Vp44HU%2FzBTvyHQ5z2zS5d9t3QwY%3D&Expires=1638317551",
-                    "version": "v1.0.0"
-                }
-            }"#;
-        let result: serde_json::Result<Value> = serde_json::from_str(json);
-        println!("{:?}", result);
+    #[ignore]
+    fn it_builds() {
+        let hb = build().unwrap();
+        println!("{:?}", hb)
     }
 
     #[test]

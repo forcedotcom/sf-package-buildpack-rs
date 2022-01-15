@@ -1,0 +1,16 @@
+#! /bin/sh
+# HEROKU BUILDPACK COMPILE COMMAND
+#
+# bin/compile BUILD_DIR CACHE_DIR ENV_DIR
+#
+set -euxo pipefail
+if [ `uname` -eq "Darwin" ]; then
+  LIB_DIR = "./lib/x86_64-darwin"
+else
+  LIB_DIR = "./lib/x86_64-unknown-linux-musl"
+fi
+if [ ! -d $2/layers ]; then
+  mkdir $2/layers
+fi
+$LIB_DIR/cli pack build -p "$1" -l "$2" -e "$3"
+exit $?

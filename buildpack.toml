@@ -2,7 +2,7 @@
 api = "0.6"
 
 [buildpack]
-id = "sf/package"
+id = "mhoefer/sf-package-buildpack"
 version = "0.0.1"
 name = "Salesforce Package Builder"
 #clear-env = true

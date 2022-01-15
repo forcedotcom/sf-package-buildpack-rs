@@ -1,0 +1,28 @@
+#!/bin/sh
+# HEROKU BUILDPACK/CLOUD NATIVE BUILDPACK DETECT COMMAND
+#
+# Invoked as Heroku Buildpack:
+#   bin/detect BUILD_DIR
+#
+# Invoked as Cloud Native Buildpack:
+#   bin/detect PLATFORM_DIR BUILD_PLAN
+#
+set -euxo pipefail
+if [ `uname` -eq "Darwin" ]; then
+  LIB_DIR = "./lib/x86_64-darwin"
+else
+  LIB_DIR = "./lib/x86_64-unknown-linux-musl"
+fi
+if [ $# -eq 2 ]
+then
+  echo "Cloud Native Buildpack"
+  echo "PLATFORM_DIR = $1"
+  echo "BUILD_PLAN = $2"
+  $LIB_DIR/cli pack detect --path "." --env "$1"
+else
+  echo "Heroku Buildpack"
+  echo "BUILD_DIR = $1"
+  $LIB_DIR/cli pack detect --path "$1"
+fi
+
+exit $?

@@ -1,8 +1,5 @@
 use crate::util::config::{SFPackageAppConfig, SFPackageBuildpackConfig};
-use crate::{
-    push_source, reset_environment, sfdx_create_org, sfdx_test_apex,
-    BuildLogger, Logger,
-};
+use crate::{push_source, reset_environment, sfdx_create_org, sfdx_test_apex, BuildLogger, Logger};
 use anyhow::anyhow;
 use libcnb::Error::BuildpackError;
 use libcnb::{

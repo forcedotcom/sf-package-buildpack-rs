@@ -41,11 +41,13 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                             .setting(ArgSettings::Required)
                             .help("path to the application source directory, containing the app.toml file")
                             .takes_value(true)
+                            .short('p')
                     )
                     .arg(
                         Arg::new("env")
                             .help("path to a directory containing platform provided configuration, such as environment variables")
                             .takes_value(true)
+                            .short('e')
                     )
                 )
                 .subcommand(
@@ -57,27 +59,49 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                                 .help("path to the application source directory, containing the app.toml file")
                                 .setting(ArgSettings::Required)
                                 .takes_value(true)
+                                .long("path")
+                                .short('p')
                         )
                         .arg(
                             Arg::new("env")
                                 .help("path to a directory containing platform provided configuration, such as environment variables")
                                 .takes_value(true)
+                                .long("env")
+                                .short('e')
+                        )
+                        .arg(
+                            Arg::new("layers")
+                                .help("path to a directory able to cache dependencies")
+                                .takes_value(true)
+                                .long("layers")
+                                .short('l')
                         )
                 )
                 .subcommand(
                     App::new("test")
-                    .about("test the application")
-                    .setting(AppSettings::ArgRequiredElseHelp)
-                    .arg(
-                        Arg::new("path").setting(ArgSettings::Required)
-                            .help("path to the application source directory, containing the app.toml file")
-                            .takes_value(true)
-                    )
-                    .arg(
-                        Arg::new("env")
-                            .help("path to a directory containing platform provided configuration, such as environment variables")
-                            .takes_value(true)
-                    )
+                        .about("test the application")
+                        .setting(AppSettings::ArgRequiredElseHelp)
+                        .arg(
+                            Arg::new("path").setting(ArgSettings::Required)
+                                .help("path to the application source directory, containing the app.toml file")
+                                .takes_value(true)
+                                .long("path")
+                                .short('p')
+                        )
+                        .arg(
+                            Arg::new("env")
+                                .help("path to a directory containing platform provided configuration, such as environment variables")
+                                .takes_value(true)
+                                .long("env")
+                                .short('e')
+                        )
+                        .arg(
+                            Arg::new("layers")
+                                .help("path to a directory able to cache dependencies")
+                                .takes_value(true)
+                                .long("layers")
+                                .short('l')
+                        )
                 )
                 .subcommand(App::new("publish")
                     .about("publish the application")
@@ -86,11 +110,22 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                         Arg::new("path").setting(ArgSettings::Required)
                             .help("path to the application source directory, containing the app.toml file")
                             .takes_value(true)
+                            .long("path")
+                            .short('p')
                     )
                     .arg(
                         Arg::new("env")
                             .help("path to a directory containing platform provided configuration, such as environment variables")
                             .takes_value(true)
+                            .long("env")
+                            .short('e')
+                    )
+                    .arg(
+                        Arg::new("layers")
+                            .help("path to a directory able to cache dependencies")
+                            .takes_value(true)
+                            .long("layers")
+                            .short('l')
                     )
                 ),
         )
@@ -187,7 +222,7 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
     }
 }
 
-fn init(args: &ArgMatches) -> (PathBuf, String, PathBuf, PathBuf) {
+fn init(args: &ArgMatches) -> (PathBuf, String, PathBuf, PathBuf, Option<PathBuf>) {
     let current_exe = std::env::current_exe().unwrap();
     let current_dir = std::env::current_dir().unwrap();
     let buildpack_dir = current_exe
@@ -210,14 +245,19 @@ fn init(args: &ArgMatches) -> (PathBuf, String, PathBuf, PathBuf) {
         None => current_dir,
         Some(s) => PathBuf::from(s),
     };
-    (buildpack_dir, bp_toml, app_dir, env_dir)
+
+    let layers_dir = match args.value_of("layers") {
+        None => None,
+        Some(s) => Some(PathBuf::from(s)),
+    };
+    (buildpack_dir, bp_toml, app_dir, env_dir, layers_dir)
 }
 
 fn detect(args: &ArgMatches) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
     logger.header("Pack Detect")?;
 
-    let (buildpack_dir, bp_toml, app_dir, env_dir) = init(args);
+    let (buildpack_dir, bp_toml, app_dir, env_dir, _layers_dir) = init(args);
 
     let context = DetectContext {
         app_dir: app_dir.to_owned(),
@@ -234,12 +274,15 @@ fn detect(args: &ArgMatches) -> Result<(), anyhow::Error> {
                 &app_dir.to_str().unwrap(),
                 plan
             )),
-            DetectOutcome::Fail => logger.info(format!(
-                "App in {} is not suitable for buildpack",
-                &app_dir.to_str().unwrap()
-            )),
+            DetectOutcome::Fail => logger.error(
+                "App not suitable",
+                anyhow!(
+                    "App in {} is not suitable for buildpack",
+                    &app_dir.to_str().unwrap()
+                ),
+            ),
         },
-        Err(e) => logger.error("Pack Detect", e),
+        Err(e) => logger.error("Unexpected error during detect", e),
     }
 }
 
@@ -247,10 +290,13 @@ fn build(args: &ArgMatches) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
     logger.header("Pack Build")?;
 
-    let (buildpack_dir, bp_toml, app_dir, env_dir) = init(args);
+    let (buildpack_dir, bp_toml, app_dir, env_dir, layers_dir) = init(args);
 
     let context = BuildContext {
-        layers_dir: Default::default(),
+        layers_dir: match layers_dir {
+            Some(path_buf) => path_buf,
+            None => Default::default(),
+        },
         app_dir: app_dir.to_owned(),
         buildpack_dir: buildpack_dir.to_owned(),
         stack_id: "".to_string(),
@@ -263,7 +309,7 @@ fn build(args: &ArgMatches) -> Result<(), anyhow::Error> {
 
     match crate::build(context) {
         Ok(()) => logger.info(format!("Built app in {}", &app_dir.to_str().unwrap())),
-        Err(e) => logger.error("Pack Build", e),
+        Err(e) => logger.error("Unexpected error during build", e),
     }
 }
 
@@ -271,10 +317,13 @@ fn test(args: &ArgMatches) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
     logger.header("Pack Test")?;
 
-    let (buildpack_dir, bp_toml, app_dir, env_dir) = init(args);
+    let (buildpack_dir, bp_toml, app_dir, env_dir, layers_dir) = init(args);
 
     let context = TestContext {
-        layers_dir: Default::default(),
+        layers_dir: match layers_dir {
+            Some(path_buf) => path_buf,
+            None => Default::default(),
+        },
         app_dir: app_dir.to_owned(),
         buildpack_dir: buildpack_dir.to_owned(),
         stack_id: "".to_string(),
@@ -289,13 +338,16 @@ fn test(args: &ArgMatches) -> Result<(), anyhow::Error> {
                 results.passed.len(),
                 &app_dir.to_str().unwrap()
             )),
-            TestOutcome::Fail(results) => logger.info(format!(
-                "{} tests failed for app in {}.",
-                results.failed.len(),
-                &app_dir.to_str().unwrap()
-            )),
+            TestOutcome::Fail(results) => logger.error(
+                "Tests failed",
+                anyhow!(
+                    "{} tests failed for app in {}.",
+                    results.failed.len(),
+                    &app_dir.to_str().unwrap()
+                ),
+            ),
         },
-        Err(e) => logger.error("Pack Test", e),
+        Err(e) => logger.error("Unexpected error during test", e),
     }
 }
 
@@ -303,7 +355,7 @@ fn publish(args: &ArgMatches) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
     logger.header("Pack Publish")?;
 
-    let (buildpack_dir, bp_toml, app_dir, env_dir) = init(args);
+    let (buildpack_dir, bp_toml, app_dir, env_dir, _layers_dir) = init(args);
 
     let context = PublishContext {
         app_dir: app_dir.to_owned(),
@@ -315,7 +367,7 @@ fn publish(args: &ArgMatches) -> Result<(), anyhow::Error> {
 
     match crate::publish(context) {
         Ok(_) => logger.info(format!("App in {} published", &app_dir.to_str().unwrap())),
-        Err(e) => logger.error("Package Publish", e),
+        Err(e) => logger.error("Unexpected error during publish", e),
     }
 }
 
@@ -333,7 +385,7 @@ fn encrypt(m: &ArgMatches) -> Result<(), anyhow::Error> {
                 &target_file.to_str().unwrap()
             ))
         }
-        Err(e) => logger.error("Encrypt File", e),
+        Err(e) => logger.error("Unexpected error during encrypt", e),
     }
 }
 
@@ -351,7 +403,7 @@ fn decrypt(m: &ArgMatches) -> Result<(), anyhow::Error> {
                 &target_file.to_str().unwrap()
             ))
         }
-        Err(e) => logger.error("Decrypt File", e),
+        Err(e) => logger.error("Unexpected error during decrypt", e),
     }
 }
 

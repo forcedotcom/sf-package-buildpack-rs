@@ -1,0 +1,11 @@
+#! /bin/sh
+# HEROKU BUILDPACK RELEASE COMMAND
+#
+# bin/release BUILD_DIR
+#
+set -euxo pipefail
+cat << EOF
+---
+default_process_types:
+  worker: sfdx --version
+EOF

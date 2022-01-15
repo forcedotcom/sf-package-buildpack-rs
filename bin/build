@@ -1,0 +1,17 @@
+#! /bin/sh
+# CLOUD NATIVE BUILDPACK BUILD COMMAND
+#
+# bin/build LAYERS_DIR PLATFORM_DIR BUILD_PLAN
+#
+set -euxo pipefail
+if [ `uname` -eq "Darwin" ]; then
+  LIB_DIR = "./lib/x86_64-darwin"
+else
+  LIB_DIR = "./lib/x86_64-unknown-linux-musl"
+fi
+if [ ! -d $2/layers ]; then
+  mkdir $2/layers
+fi
+
+$LIB_DIR/cli pack build -p "." -l "$1" -e "$2"
+exit $?

@@ -63,34 +63,27 @@ script = '''
 //! tar = "^0.4.37"
 //! ```
 // Silence warning from rust-script:
-#![allow(non_snake_case)]
 use std::path::PathBuf;
 use std::fs;
-use std::collections::HashMap;
 use colored::*;
 
 fn main() {
-    copy_files("./target-cargo", "target");
-    copy_files("./target-cargo/x86_64-unknown-linux-musl", "target/x86_64-unknown-linux-musl");
-}
-
-fn copy_files(from_root: &str, to_root: &str) {
-    let destination = PathBuf::from(to_root);
+    let destination = PathBuf::from("lib/x86_64-darwin");
     if destination.exists() {
         fs::remove_dir_all(&destination).unwrap();
     }
-    fs::create_dir_all(&destination.join("bin")).unwrap();
-    let mut files = HashMap::new();
-    files.insert(PathBuf::from(from_root).join(env!("CARGO_PROFILE")).join(env!("CARGO_MAKE_CRATE_NAME")), destination.join("bin/build"));
-    files.insert(PathBuf::from("./buildpack.toml"), destination.join("buildpack.toml"));
-    files.insert(PathBuf::from("./package.toml"), destination.join("package.toml"));
-    for (from, to) in &files {
-        fs::copy(from, to).unwrap();
+    fs::create_dir_all(&destination).unwrap();
+    fs::copy(PathBuf::from("./target-cargo").join(env!("CARGO_PROFILE")).join(env!("CARGO_MAKE_CRATE_NAME")),
+        destination.join("cli")).unwrap();
+
+    let destination_musl = PathBuf::from("lib/x86_64-unknown-linux-musl");
+    if destination_musl.exists() {
+        fs::remove_dir_all(&destination_musl).unwrap();
     }
-    fs::hard_link(destination.join("bin/build"), destination.join("bin/detect")).unwrap();
-    fs::hard_link(destination.join("bin/build"), destination.join("bin/test")).unwrap();
-    fs::hard_link(destination.join("bin/build"), destination.join("bin/publish")).unwrap();
-    fs::hard_link(destination.join("bin/build"), destination.join("bin/cli")).unwrap();
+    fs::create_dir_all(&destination_musl).unwrap();
+    fs::copy(PathBuf::from("./target-cargo/x86_64-unknown-linux-musl").join(env!("CARGO_PROFILE")).join(env!("CARGO_MAKE_CRATE_NAME")),
+        destination_musl.join("cli")).unwrap();
+
     println!("{}", "Successfully created buildpack directory".bold().green());
     println!("{}", "========================================".bold().green());
     println!("To try out your buildpack run:");

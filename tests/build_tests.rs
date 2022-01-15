@@ -180,6 +180,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_heroku_package_build() {
+        let auth_token = std::env::var("HEROKU_AUTH_TOKEN").unwrap();
+        println!("Heroku AUTH {}", auth_token);
         match heroku::build() {
             Ok(s) => {
                 println!("{:?}", s);
