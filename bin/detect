@@ -7,23 +7,26 @@
 # Invoked as Cloud Native Buildpack:
 #   bin/detect PLATFORM_DIR BUILD_PLAN
 #
-set -eu pipefail
+set -eu
+set -o pipefail
 
+export PROGRAM_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "`uname`" = "Darwin" ]; then
-  export LIB_DIR="./lib/x86_64-darwin"
+  export LIB_DIR="$PROGRAM_DIR/lib/x86_64-darwin"
 else
-  export LIB_DIR="./lib/x86_64-unknown-linux-musl"
+  export LIB_DIR="$PROGRAM_DIR/lib/x86_64-unknown-linux-musl"
 fi
+
 if [ $# -eq 2 ]
 then
   echo "Cloud Native Buildpack"
   echo "PLATFORM_DIR = $1"
   echo "BUILD_PLAN = $2"
-  $LIB_DIR/cli pack detect --path "." --env "$1"
+  $LIB_DIR/cli pack detect "." --env "$1"
 else
   echo "Heroku Buildpack"
   echo "BUILD_DIR = $1"
-  $LIB_DIR/cli pack detect --path "$1"
+  $LIB_DIR/cli pack detect "$1"
 fi
 
 exit $?

@@ -39,11 +39,8 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                     .setting(AppSettings::ArgRequiredElseHelp)
                     .arg(
                         Arg::new("path")
-                            .setting(ArgSettings::Required)
                             .help("path to the application source directory, containing the app.toml file")
-                            .takes_value(true)
-                            .long("path")
-                            .short('p')
+                            .setting(ArgSettings::Required)
                     )
                     .arg(
                         Arg::new("env")
@@ -52,6 +49,13 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                             .long("env")
                             .short('e')
                     )
+                    .arg(
+                    Arg::new("layers")
+                        .help("path to a directory able to cache dependencies")
+                        .takes_value(true)
+                        .long("layers")
+                        .short('l')
+                )
                 )
                 .subcommand(
                     App::new("build")
@@ -61,9 +65,6 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                             Arg::new("path")
                                 .help("path to the application source directory, containing the app.toml file")
                                 .setting(ArgSettings::Required)
-                                .takes_value(true)
-                                .long("path")
-                                .short('p')
                         )
                         .arg(
                             Arg::new("env")
@@ -85,11 +86,9 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                         .about("test the application")
                         .setting(AppSettings::ArgRequiredElseHelp)
                         .arg(
-                            Arg::new("path").setting(ArgSettings::Required)
+                            Arg::new("path")
                                 .help("path to the application source directory, containing the app.toml file")
-                                .takes_value(true)
-                                .long("path")
-                                .short('p')
+                                .setting(ArgSettings::Required)
                         )
                         .arg(
                             Arg::new("env")
@@ -110,11 +109,9 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                     .about("publish the application")
                     .setting(AppSettings::ArgRequiredElseHelp)
                     .arg(
-                        Arg::new("path").setting(ArgSettings::Required)
+                        Arg::new("path")
                             .help("path to the application source directory, containing the app.toml file")
-                            .takes_value(true)
-                            .long("path")
-                            .short('p')
+                            .setting(ArgSettings::Required)
                     )
                     .arg(
                         Arg::new("env")
@@ -443,6 +440,7 @@ mod tests {
     use crate::util::enc_file::{decrypt, EncFile};
     use libcnb::{read_file_to_string, write_file};
     use std::env;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -472,6 +470,19 @@ mod tests {
         decrypt(&EncFile::from_env(enc_file).unwrap(), &unenc_file).unwrap();
         let text = read_file_to_string(unenc_file).unwrap();
         assert_eq!(content, text.as_str());
+    }
+
+    #[test]
+    fn test_cli() {
+        let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let app_dir = root_dir.join("tests/fixtures/sf-package");
+        let args = Vec::from([
+            "cli".to_string(),
+            "pack".to_string(),
+            "detect".to_string(),
+            app_dir.to_str().unwrap().to_string(),
+        ]);
+        execute(args).unwrap();
     }
 
     fn setup_env() {
