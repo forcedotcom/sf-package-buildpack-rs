@@ -17,6 +17,10 @@ else
   export LIB_DIR="$PROGRAM_DIR/lib/x86_64-unknown-linux-musl"
 fi
 
+echo DEBUG
+ls -ltr $PROGRAM_DIR
+ls -ltr $PROGRAM_DIR/lib
+
 if [ $# -eq 2 ]
 then
   echo "Cloud Native Buildpack"
