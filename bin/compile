@@ -8,9 +8,16 @@ set -o pipefail
 
 export PROGRAM_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "`uname`" = "Darwin" ]; then
-  export LIB_DIR="$PROGRAM_DIR/lib/x86_64-darwin"
+  export ARCH_NAME="x86_64-darwin"
 else
-  export LIB_DIR="$PROGRAM_DIR/lib/x86_64-unknown-linux-musl"
+  export ARCH_NAME="x86_64-unknown-linux-musl"
+fi
+
+export LIB_DIR="$PROGRAM_DIR/lib/$ARCH_NAME"
+
+if [ ! -f $LIB_DIR/cli ]; then
+  wget -O $LIB_DIR/cli https://github.com/forcedotcom/sf-package-buildpack-rs/blob/main/lib/$ARCH_NAME/cli?raw=true
+  chmod u+x $LIB_DIR/cli
 fi
 
 if [ ! -d $2/layers ]; then
