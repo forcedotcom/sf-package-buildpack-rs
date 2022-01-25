@@ -342,14 +342,20 @@ pub fn sfdx_auth(
         None => match env::var_os("SFDX_AUTH_ENC_KEYFILE") {
             Some(os_str) => {
                 // Try the ENC_KEYFILE var next
-                logger.info(format!("found SFDX_AUTH_ENC_KEYFILE {}", p.to_str().unwrap()))?;
                 let p = PathBuf::from(os_str);
+                logger.info(format!(
+                    "found SFDX_AUTH_ENC_KEYFILE {}",
+                    p.to_str().unwrap()
+                ))?;
                 decrypt_key(layers_dir, &mut logger, p)?
             }
             None => {
                 // Lastly, try the configured key file value
                 let p = PathBuf::from(key_path);
-                logger.info(format!("trying key_path app config value {}", p.to_str().unwrap()))?;
+                logger.info(format!(
+                    "trying key_path app config value {}",
+                    p.to_str().unwrap()
+                ))?;
                 decrypt_key(layers_dir, &mut logger, p)?
             }
         },
