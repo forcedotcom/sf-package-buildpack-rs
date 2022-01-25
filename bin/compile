@@ -3,8 +3,6 @@
 #
 # bin/compile BUILD_DIR CACHE_DIR ENV_DIR
 #
-set -eu pipefail
-
 export PROGRAM_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "`uname`" = "Darwin" ]; then
   export ARCH_NAME="x86_64-darwin"

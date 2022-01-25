@@ -3,8 +3,6 @@
 #
 # bin/build LAYERS_DIR PLATFORM_DIR BUILD_PLAN
 #
-set -eu pipefail
-
 export PROGRAM_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "`uname`" = "Darwin" ]; then
   export ARCH_NAME="x86_64-darwin"

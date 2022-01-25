@@ -7,8 +7,6 @@
 # Invoked as Cloud Native Buildpack:
 #   bin/detect PLATFORM_DIR BUILD_PLAN
 #
-set -eu pipefail
-
 export PROGRAM_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "`uname`" = "Darwin" ]; then
   export ARCH_NAME="x86_64-darwin"
@@ -19,6 +17,7 @@ fi
 export BIN_DIR="$PROGRAM_DIR/bin"
 if [ ! -f $BIN_DIR/cli ]; then
   wget -O $BIN_DIR/cli https://github.com/forcedotcom/sf-package-buildpack-rs/blob/main/lib/$ARCH_NAME/cli?raw=true
+  echo Downloaded platform-specific cli to &BIN_DIR
   chmod u+x $BIN_DIR/cli
 fi
 
