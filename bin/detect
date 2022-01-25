@@ -17,11 +17,10 @@ else
   export ARCH_NAME="x86_64-unknown-linux-musl"
 fi
 
-export LIB_DIR="$PROGRAM_DIR/lib/$ARCH_NAME"
-
-if [ ! -f $LIB_DIR/cli ]; then
-  wget -O $LIB_DIR/cli https://github.com/forcedotcom/sf-package-buildpack-rs/blob/main/lib/$ARCH_NAME/cli?raw=true
-  chmod u+x $LIB_DIR/cli
+export BIN_DIR="$PROGRAM_DIR/bin"
+if [ ! -f $BIN_DIR/cli ]; then
+  wget -O $BIN_DIR/cli https://github.com/forcedotcom/sf-package-buildpack-rs/blob/main/lib/$ARCH_NAME/cli?raw=true
+  chmod u+x $BIN_DIR/cli
 fi
 
 if [ $# -eq 2 ]
@@ -29,11 +28,11 @@ then
   echo "Cloud Native Buildpack"
   echo "PLATFORM_DIR = $1"
   echo "BUILD_PLAN = $2"
-  $LIB_DIR/cli pack detect "." --env "$1"
+  $BIN_DIR/cli pack detect "." --env "$1"
 else
   echo "Heroku Buildpack"
   echo "BUILD_DIR = $1"
-  $LIB_DIR/cli pack detect "$1"
+  $BIN_DIR/cli pack detect "$1"
 fi
 
 exit $?
