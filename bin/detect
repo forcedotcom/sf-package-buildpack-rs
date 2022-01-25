@@ -7,8 +7,7 @@
 # Invoked as Cloud Native Buildpack:
 #   bin/detect PLATFORM_DIR BUILD_PLAN
 #
-set -eu
-set -o pipefail
+set -eu pipefail
 
 export PROGRAM_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "`uname`" = "Darwin" ]; then
