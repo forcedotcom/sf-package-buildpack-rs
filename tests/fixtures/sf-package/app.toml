@@ -1,6 +1,6 @@
 [default]
 hub_client_id = "3MVG9JEx.BE6yifMwrjHPgoh5LBDEECZgHw9odyBrMZ4.qsQI_CqDLjnQDkPFjVOsuzCoAHuaAS9Sd0TqnTJG"
-hub_key_file = "assets/hub.key.enc"
+hub_key_path = "assets/hub.key.enc"
 hub_user = "mhoefer@mphhub.org"
 hub_alias = "hub"
 hub_instance_url = "https://mphhub-dev-ed.my.salesforce.com"

@@ -313,7 +313,7 @@ pub fn sfdx_auth(
     layers_dir: &PathBuf,
     app_dir: &PathBuf,
     client_id: &str,
-    key_file: &str,
+    key_path: &str,
     instance_url: &str,
     user_name: &str,
     alias: Option<String>,
@@ -332,7 +332,7 @@ pub fn sfdx_auth(
             // Try the KEYFILE var first
             let p = PathBuf::from(os_str);
             if p.is_file() {
-                logger.info("found SFDX_AUTH_KEYFILE")?;
+                logger.info(format!("found SFDX_AUTH_KEYFILE {}", p.to_str().unwrap()))?;
                 Some(p)
             } else {
                 // Location given but no such file exists
@@ -342,12 +342,14 @@ pub fn sfdx_auth(
         None => match env::var_os("SFDX_AUTH_ENC_KEYFILE") {
             Some(os_str) => {
                 // Try the ENC_KEYFILE var next
+                logger.info(format!("found SFDX_AUTH_ENC_KEYFILE {}", p.to_str().unwrap()))?;
                 let p = PathBuf::from(os_str);
                 decrypt_key(layers_dir, &mut logger, p)?
             }
             None => {
                 // Lastly, try the configured key file value
-                let p = PathBuf::from(key_file);
+                let p = PathBuf::from(key_path);
+                logger.info(format!("trying key_path app config value {}", p.to_str().unwrap()))?;
                 decrypt_key(layers_dir, &mut logger, p)?
             }
         },
@@ -357,7 +359,7 @@ pub fn sfdx_auth(
         Some(os_str) => {
             let p = PathBuf::from(os_str);
             if p.is_file() {
-                logger.info("found SFDX_AUTH_URLFILE")?;
+                logger.info(format!("found SFDX_AUTH_URLFILEE {}", p.to_str().unwrap()))?;
                 Some(p)
             } else {
                 // Location given but no such file exists
@@ -368,7 +370,7 @@ pub fn sfdx_auth(
             Some(os_str) => {
                 let p = layers_dir.join("sfdx").join(".sfdx_auth_url");
                 write_file(os_str.to_str().unwrap().as_bytes(), &p);
-                logger.info("found SFDX_AUTH_URL")?;
+                logger.info(format!("found SFDX_AUTH_URL {}", os_str.to_str().unwrap()))?;
                 Some(p)
             }
             None => None,

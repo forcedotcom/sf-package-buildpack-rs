@@ -129,7 +129,7 @@ pub struct DefaultConfig {
     #[serde(default)]
     pub hub_client_id: String,
     #[serde(default)]
-    pub hub_key: String,
+    pub hub_key_path: String,
     #[serde(default)]
     pub hub_instance_url: String,
     #[serde(default)]
@@ -146,7 +146,7 @@ impl Default for DefaultConfig {
     fn default() -> Self {
         DefaultConfig {
             hub_client_id: "".to_string(),
-            hub_key: "".to_string(),
+            hub_key_path: "".to_string(),
             hub_instance_url: "https://login.salesforce.com".to_string(),
             hub_user: "".to_string(),
             hub_alias: None,
@@ -167,7 +167,7 @@ pub struct PackageConfig {
     #[serde(default)]
     pub hub_client_id: String,
     #[serde(default)]
-    pub hub_key: String,
+    pub hub_key_path: String,
     #[serde(default)]
     pub hub_instance_url: String,
     #[serde(default)]
@@ -199,8 +199,8 @@ impl PackageConfig {
         if self.hub_client_id.is_empty() {
             self.hub_client_id = config.hub_client_id.clone();
         }
-        if self.hub_key.is_empty() {
-            self.hub_key = config.hub_key.clone();
+        if self.hub_key_path.is_empty() {
+            self.hub_key_path = config.hub_key_path.clone();
         }
         if self.hub_instance_url.is_empty() {
             self.hub_instance_url = config.hub_instance_url.clone();
@@ -231,7 +231,7 @@ pub struct DevConfig {
     #[serde(default)]
     pub hub_client_id: String,
     #[serde(default)]
-    pub hub_key: String,
+    pub hub_key_path: String,
     #[serde(default)]
     pub hub_instance_url: String,
     #[serde(default)]
@@ -259,8 +259,8 @@ impl DevConfig {
         if self.hub_client_id.is_empty() {
             self.hub_client_id = config.hub_client_id.clone();
         }
-        if self.hub_key.is_empty() {
-            self.hub_key = config.hub_key.clone();
+        if self.hub_key_path.is_empty() {
+            self.hub_key_path = config.hub_key_path.clone();
         }
         if self.hub_user.is_empty() {
             self.hub_user = config.hub_user.clone();
@@ -290,7 +290,7 @@ pub struct CIConfig {
     #[serde(default)]
     pub hub_client_id: String,
     #[serde(default)]
-    pub hub_key: String,
+    pub hub_key_path: String,
     #[serde(default)]
     pub hub_user: String,
     #[serde(default)]
@@ -314,8 +314,8 @@ impl CIConfig {
         if self.hub_client_id.is_empty() {
             self.hub_client_id = config.hub_client_id.clone();
         }
-        if self.hub_key.is_empty() {
-            self.hub_key = config.hub_key.clone();
+        if self.hub_key_path.is_empty() {
+            self.hub_key_path = config.hub_key_path.clone();
         }
         if self.hub_user.is_empty() {
             self.hub_user = config.hub_user.clone();
