@@ -1,4 +1,6 @@
+use anyhow::Error;
 use std::path::PathBuf;
+use std::process::Output;
 
 use libcnb::Error::BuildpackError;
 use libcnb::{get_lifecycle_mode, BuildContext, GenericPlatform, LifecycleMode, Platform};
@@ -59,7 +61,9 @@ pub fn dev_build(
         &context.platform.env(),
     )?;
 
-    sfdx_create_org_if_needed(
+    let mut abort = false;
+
+    match sfdx_create_org_if_needed(
         layers_dir,
         app_dir,
         &config.hub_user,
@@ -67,23 +71,42 @@ pub fn dev_build(
         config.org_duration_days,
         &config.org_alias,
         logger,
-    )?;
+    ) {
+        Ok(created) => {
+            if created {
+                logger.info("---> created scratch org")?;
+            }
+        }
+        Err(e) => {
+            logger.error("---> Failed creating environment", e)?;
+            abort = true;
+        }
+    }
 
-    logger.header("---> Preparing artifacts")?;
+    if !abort {
+        logger.header("---> Preparing artifacts")?;
+        match push_source(
+            layers_dir,
+            logger,
+            app_dir,
+            &config.org_alias,
+            config.op_wait_seconds,
+        ) {
+            Ok(output) => {
+                logger.output("---> Preparing artifacts", output)?;
+            }
+            Err(e) => {
+                logger.error("---> Preparing artifacts", e)?;
+                abort = true;
+            }
+        }
+    }
 
-    let proceed = push_source(
-        layers_dir,
-        logger,
-        app_dir,
-        &config.org_alias,
-        config.op_wait_seconds,
-    )?;
-
-    if proceed && config.run_tests {
+    if !abort && config.run_tests {
         logger.header("---> Running tests")?;
 
         if find_one_apex_test(app_dir) {
-            logger.info("---> Running apex tests")?;
+            logger.info("---> running apex tests")?;
             match sfdx_test_apex(
                 layers_dir,
                 app_dir,
@@ -96,7 +119,7 @@ pub fn dev_build(
                     logger.info(format!("{:?}", result))?;
                 }
                 Err(e) => {
-                    logger.error("running tests", e)?;
+                    logger.error("---> Running tests", e)?;
                 }
             }
         }
@@ -111,19 +134,9 @@ pub fn push_source(
     app_dir: &PathBuf,
     org_alias: &str,
     dev_op_wait_seconds: i32,
-) -> Result<bool, anyhow::Error> {
-    logger.info("---> Pushing source code")?;
-    let mut succeeded = true;
-    match sfdx_push_source(layers_dir, app_dir, org_alias, dev_op_wait_seconds) {
-        Ok(output) => {
-            logger.output("preparing artifacts", output)?;
-        }
-        Err(e) => {
-            logger.error("preparing artifacts", e)?;
-            succeeded = false;
-        }
-    }
-    Ok(succeeded)
+) -> Result<Output, Error> {
+    logger.info("---> pushing source code")?;
+    sfdx_push_source(layers_dir, app_dir, org_alias, dev_op_wait_seconds)
 }
 
 pub fn ci_build(
@@ -146,33 +159,42 @@ pub fn ci_build(
         &context.platform.env(),
     )?;
 
-    logger.info("---> Creating scratch org")?;
-    let output = sfdx_create_org(
+    let mut abort = false;
+
+    logger.info("---> creating scratch org")?;
+    match sfdx_create_org(
         &context.layers_dir,
         app_dir,
         &config.hub_user,
         &config.org_def_path,
         config.org_duration_days,
         &config.org_alias,
-    )?;
-    logger.output("creating environment", output)?;
-
-    logger.header("---> Preparing artifacts")?;
-
-    logger.info("---> Pushing source code")?;
-    let mut abort = false;
-    match sfdx_push_source(
-        &context.layers_dir,
-        app_dir,
-        &config.org_alias,
-        config.op_wait_seconds,
     ) {
         Ok(output) => {
-            logger.output("preparing artifacts", output)?;
+            logger.output("---> Creating environment", output)?;
         }
         Err(e) => {
-            logger.error("preparing artifacts", e)?;
             abort = true;
+            logger.error("---> Failed creating environment", e)?;
+        }
+    }
+
+    if !abort {
+        logger.header("---> Preparing artifacts")?;
+
+        match sfdx_push_source(
+            &context.layers_dir,
+            app_dir,
+            &config.org_alias,
+            config.op_wait_seconds,
+        ) {
+            Ok(output) => {
+                logger.output("---> Preparing artifacts", output)?;
+            }
+            Err(e) => {
+                logger.error("---> Preparing artifacts", e)?;
+                abort = true;
+            }
         }
     }
 
@@ -180,7 +202,7 @@ pub fn ci_build(
         logger.header("---> Running tests")?;
 
         if find_one_apex_test(app_dir) {
-            logger.info("---> Running apex tests")?;
+            logger.info("---> running apex tests")?;
             match sfdx_test_apex(
                 &context.layers_dir,
                 app_dir,
@@ -193,12 +215,15 @@ pub fn ci_build(
                     logger.info(format!("{:?}", result))?;
                 }
                 Err(e) => {
-                    logger.error("running tests", e)?;
+                    logger.error("---> Running tests", e)?;
                 }
             }
         }
     }
 
+    logger.header("---> Resetting environment")?;
+
+    logger.info("---> deleting scratch org")?;
     reset_environment(
         &context.layers_dir,
         app_dir,
@@ -236,7 +261,7 @@ pub fn package_build(
         let found_response =
             crate::sfdx_find_package(layers_dir, app_dir, &config.hub_user, &config.name)?;
         if found_response.result.package_id.is_empty() {
-            logger.info("---> Creating package")?;
+            logger.info("---> creating package")?;
             let response = sfdx_create_package(
                 layers_dir,
                 app_dir,
@@ -259,7 +284,7 @@ pub fn package_build(
         )?;
     }
 
-    logger.info("---> Building package version")?;
+    logger.info("---> building package version")?;
     match sfdx_create_package_version(
         layers_dir,
         app_dir,
@@ -279,10 +304,10 @@ pub fn package_build(
                 config.version_name,
                 result.version,
             )?;
-            logger.info("New package version created")?;
+            logger.info("---> new package version created")?;
         }
         Err(e) => {
-            logger.error("preparing artifacts", e)?;
+            logger.error("---> Preparing artifacts", e)?;
         }
     }
     Ok(())

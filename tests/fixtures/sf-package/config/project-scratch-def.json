@@ -1,7 +1,9 @@
 {
-  "orgName": "test company",
+  "orgName": "sf-package-buildpack company",
   "edition": "Developer",
-  "features": ["ForceComPlatform"],
+  "features": [
+    "ForceComPlatform"
+  ],
   "language": "en_US",
   "settings": {}
 }

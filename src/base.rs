@@ -412,7 +412,6 @@ fn decrypt_key(
             "Decrypted file to {}",
             &target_file.to_str().unwrap()
         ))?;
-        logger.info(format!("Exists? {}", &target_file.is_file()))?;
         Ok(target_file)
     } else {
         Err(anyhow!("Location given but no such file exists"))

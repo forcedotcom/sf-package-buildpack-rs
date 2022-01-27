@@ -70,57 +70,78 @@ fn ci_test(
     let layers_dir = &context.layers_dir;
     let config = SFPackageAppConfig::from_dir(app_dir).ci;
 
-    sfdx_create_org(
+    let mut abort = false;
+    match sfdx_create_org(
         layers_dir,
         app_dir,
         &config.hub_user,
         &config.org_def_path,
         config.org_duration_days,
         &config.org_alias,
-    )?;
+    ) {
+        Ok(output) => {
+            logger.output("Preparing artifacts", output)?;
+        }
+        Err(e) => {
+            logger.error("preparing artifacts", e)?;
+            abort = true;
+        }
+    }
 
-    logger.header("---> Preparing artifacts")?;
-
-    let result = match push_source(
-        layers_dir,
-        logger,
-        app_dir,
-        &config.org_alias,
-        config.op_wait_seconds,
-    )? {
-        true => {
-            match sfdx_test_apex(
+    let result = match abort {
+        true => Err(BuildpackError(anyhow!(
+            "no tests were executed.  Environment setup failed."
+        ))),
+        false => {
+            logger.header("---> Preparing artifacts")?;
+            match push_source(
                 layers_dir,
+                logger,
                 app_dir,
                 &config.org_alias,
-                config.test_results_path,
-                config.test_results_format,
                 config.op_wait_seconds,
             ) {
-                Ok(result) => {
-                    let outcome = result.into();
-                    match &outcome {
-                        TestOutcome::Pass(results) => {
-                            logger.info("Test run succeeded")?;
-                            logger.info(format!("{} tests passed", results.passed.len()))?;
-                            logger.info(format!("{} tests failed", results.failed.len()))?;
-                            logger.info(format!("{} tests ignored", results.ignored.len()))?;
+                Ok(output) => {
+                    logger.output("---> Preparing artifacts", output)?;
+
+                    match sfdx_test_apex(
+                        layers_dir,
+                        app_dir,
+                        &config.org_alias,
+                        config.test_results_path,
+                        config.test_results_format,
+                        config.op_wait_seconds,
+                    ) {
+                        Ok(result) => {
+                            let outcome = result.into();
+                            match &outcome {
+                                TestOutcome::Pass(results) => {
+                                    logger.info("Test run succeeded")?;
+                                    logger
+                                        .info(format!("{} tests passed", results.passed.len()))?;
+                                    logger
+                                        .info(format!("{} tests failed", results.failed.len()))?;
+                                    logger
+                                        .info(format!("{} tests ignored", results.ignored.len()))?;
+                                }
+                                TestOutcome::Fail(results) => {
+                                    logger.info("Test run completed with failures")?;
+                                    logger
+                                        .info(format!("{} tests passed", results.passed.len()))?;
+                                    logger
+                                        .info(format!("{} tests failed", results.failed.len()))?;
+                                    logger
+                                        .info(format!("{} tests ignored", results.ignored.len()))?;
+                                }
+                            }
+                            Ok(outcome)
                         }
-                        TestOutcome::Fail(results) => {
-                            logger.info("Test run completed with failures")?;
-                            logger.info(format!("{} tests passed", results.passed.len()))?;
-                            logger.info(format!("{} tests failed", results.failed.len()))?;
-                            logger.info(format!("{} tests ignored", results.ignored.len()))?;
-                        }
+                        Err(e) => libcnb::Result::Err(BuildpackError(e)),
                     }
-                    Ok(outcome)
                 }
-                Err(e) => libcnb::Result::Err(BuildpackError(e)),
+                Err(e) => Err(BuildpackError(anyhow!(e))),
             }
         }
-        false => Err(BuildpackError(anyhow!(
-            "No tests were executed.  Failed to push source."
-        ))),
     };
 
     reset_environment(layers_dir, app_dir, &config.hub_user, &config.org_alias)?;
