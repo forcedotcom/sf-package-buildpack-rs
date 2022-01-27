@@ -1,16 +1,16 @@
 use std::path::PathBuf;
 
 use libcnb::Error::BuildpackError;
-use libcnb::{get_lifecycle_mode, BuildContext, GenericPlatform, LifecycleMode};
+use libcnb::{get_lifecycle_mode, BuildContext, GenericPlatform, LifecycleMode, Platform};
 
-use crate::layers::sfdx::{
-    sfdx_auth, sfdx_create_org, sfdx_create_package, sfdx_create_package_version,
-    sfdx_find_package, sfdx_push_source, sfdx_test_apex,
-};
 use crate::util::config::{SFPackageAppConfig, SFPackageBuildpackConfig};
 use crate::util::logger::{BuildLogger, Logger};
 use crate::util::meta::{write_package_meta, write_package_version_meta};
-use crate::{find_one_apex_test, require_sfdx, reset_environment, sfdx_create_org_if_needed};
+use crate::{
+    find_one_apex_test, require_sfdx, reset_environment, sfdx_auth, sfdx_create_org,
+    sfdx_create_org_if_needed, sfdx_create_package, sfdx_create_package_version, sfdx_push_source,
+    sfdx_test_apex,
+};
 
 pub fn build(
     context: BuildContext<GenericPlatform, SFPackageBuildpackConfig>,
@@ -56,6 +56,7 @@ pub fn dev_build(
         &config.hub_instance_url,
         &config.hub_user,
         config.hub_alias,
+        &context.platform.env(),
     )?;
 
     sfdx_create_org_if_needed(
@@ -142,6 +143,7 @@ pub fn ci_build(
         &config.hub_instance_url,
         &config.hub_user,
         config.hub_alias,
+        &context.platform.env(),
     )?;
 
     logger.info("---> Creating scratch org")?;
@@ -225,13 +227,14 @@ pub fn package_build(
         &config.hub_instance_url,
         &config.hub_user,
         config.hub_alias,
+        &context.platform.env(),
     )?;
 
     logger.header("---> Preparing artifacts")?;
     let mut package_id = config.id;
     if package_id.is_empty() && config.create_if_needed {
         let found_response =
-            sfdx_find_package(layers_dir, app_dir, &config.hub_user, &config.name)?;
+            crate::sfdx_find_package(layers_dir, app_dir, &config.hub_user, &config.name)?;
         if found_response.result.package_id.is_empty() {
             logger.info("---> Creating package")?;
             let response = sfdx_create_package(

@@ -20,5 +20,5 @@ fi
 if [ ! -d $2/layers ]; then
   mkdir $2/layers
 fi
-$BIN_DIR/cli pack build "$1" -l "$2" -e "$3"
+$BIN_DIR/cli pack build "$1" --layers "$2" --env "$3"
 exit $?

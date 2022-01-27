@@ -33,6 +33,7 @@ mod tests {
             dotenv::dotenv().ok();
 
             let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let platform_dir = root_dir.join(".platform");
             let bp_temp = tempdir().unwrap();
             let layers_temp = tempdir().unwrap();
 
@@ -49,7 +50,7 @@ mod tests {
                 app_dir: app_dir.clone(),
                 buildpack_dir: bp_dir.clone(),
                 stack_id: String::from("lol"),
-                platform: GenericPlatform::from_path(&bp_dir).unwrap(),
+                platform: GenericPlatform::from_path(&platform_dir).unwrap(),
                 buildpack_plan: BuildpackPlan {
                     entries: Vec::<Entry>::new(),
                 },
@@ -116,6 +117,44 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn test_cli_as_heroku_buildpack() {
+        let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let app_dir = root_dir.join("tests/fixtures/sf-package");
+        let cache_dir = tempdir().unwrap();
+        let args = Vec::from([
+            "cli".to_string(),
+            "pack".to_string(),
+            "build".to_string(),
+            app_dir.to_str().unwrap().to_string(),
+            "--layers".to_string(),
+            cache_dir.path().to_str().unwrap().to_string(),
+            "--env".to_string(),
+            root_dir.join(".platform/env").to_str().unwrap().to_string(),
+        ]);
+        sf_package_buildpack::execute(args).expect("Build failed");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_cli_as_cnb() {
+        let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let app_dir = root_dir.join("tests/fixtures/sf-package");
+        let layers_dir = tempdir().unwrap();
+        let args = Vec::from([
+            "cli".to_string(),
+            "pack".to_string(),
+            "build".to_string(),
+            app_dir.to_str().unwrap().to_string(),
+            "--layers".to_string(),
+            layers_dir.path().to_str().unwrap().to_string(),
+            "--platform".to_string(),
+            root_dir.join(".platform").to_str().unwrap().to_string(),
+        ]);
+        sf_package_buildpack::execute(args).expect("Build failed");
+    }
+
+    #[test]
+    #[ignore]
     fn test_test() {
         let setup = TestSetup::new();
         let context = setup.test_context;
@@ -141,14 +180,6 @@ mod tests {
         }
 
         sf_package_buildpack::test(context).expect("Test failed");
-    }
-
-    #[test]
-    #[ignore]
-    fn test_sfdx() {
-        let setup = TestSetup::new();
-        // TODO add mock to validate the client was/was not actually installed here
-        sf_package_buildpack::sfdx(&setup.build_context).expect("Failed to test sfdx layer");
     }
 
     #[test]

@@ -18,7 +18,7 @@ pub fn cli() {
     }
 }
 
-fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
+pub fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
 
     let app = App::new("SF Package Buildpack CLI")
@@ -38,13 +38,19 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                     .about("Detect whether this buildpack can build the application")
                     .setting(AppSettings::ArgRequiredElseHelp)
                     .arg(
-                        Arg::new("path")
+                        Arg::new("source")
                             .help("path to the application source directory, containing the app.toml file")
                             .setting(ArgSettings::Required)
                     )
                     .arg(
+                        Arg::new("platform")
+                            .help("path to a directory containing platform provided configuration, for cloud native buildpacks.  Files containing environment variables should reside within an env subdirectory here.")
+                            .takes_value(true)
+                            .long("platform")
+                            .short('p')
+                    ).arg(
                         Arg::new("env")
-                            .help("path to a directory containing platform provided configuration, such as environment variables")
+                            .help("path to a directory with files containing environment variable values")
                             .takes_value(true)
                             .long("env")
                             .short('e')
@@ -62,13 +68,19 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                         .about("build the application")
                         .setting(AppSettings::ArgRequiredElseHelp)
                         .arg(
-                            Arg::new("path")
+                            Arg::new("source")
                                 .help("path to the application source directory, containing the app.toml file")
                                 .setting(ArgSettings::Required)
                         )
                         .arg(
+                            Arg::new("platform")
+                                .help("path to a directory containing platform provided configuration, for cloud native buildpacks.  Files containing environment variables should reside within an env subdirectory here.")
+                                .takes_value(true)
+                                .long("platform")
+                                .short('p')
+                        ).arg(
                             Arg::new("env")
-                                .help("path to a directory containing platform provided configuration, such as environment variables")
+                                .help("path to a directory with files containing environment variable values")
                                 .takes_value(true)
                                 .long("env")
                                 .short('e')
@@ -86,13 +98,19 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                         .about("test the application")
                         .setting(AppSettings::ArgRequiredElseHelp)
                         .arg(
-                            Arg::new("path")
+                            Arg::new("source")
                                 .help("path to the application source directory, containing the app.toml file")
                                 .setting(ArgSettings::Required)
                         )
                         .arg(
+                            Arg::new("platform")
+                                .help("path to a directory containing platform provided configuration, for cloud native buildpacks.  Files containing environment variables should reside within an env subdirectory here.")
+                                .takes_value(true)
+                                .long("platform")
+                                .short('p')
+                        ).arg(
                             Arg::new("env")
-                                .help("path to a directory containing platform provided configuration, such as environment variables")
+                                .help("path to a directory with files containing environment variable values")
                                 .takes_value(true)
                                 .long("env")
                                 .short('e')
@@ -109,13 +127,19 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
                     .about("publish the application")
                     .setting(AppSettings::ArgRequiredElseHelp)
                     .arg(
-                        Arg::new("path")
+                        Arg::new("source")
                             .help("path to the application source directory, containing the app.toml file")
                             .setting(ArgSettings::Required)
                     )
                     .arg(
+                        Arg::new("platform")
+                            .help("path to a directory containing platform provided configuration, for cloud native buildpacks.  Files containing environment variables should reside within an env subdirectory here.")
+                            .takes_value(true)
+                            .long("platform")
+                            .short('p')
+                    ).arg(
                         Arg::new("env")
-                            .help("path to a directory containing platform provided configuration, such as environment variables")
+                            .help("path to a directory with files containing environment variable values")
                             .takes_value(true)
                             .long("env")
                             .short('e')
@@ -222,7 +246,10 @@ fn execute(args: Vec<String>) -> Result<(), anyhow::Error> {
     }
 }
 
-fn init(args: &ArgMatches) -> (PathBuf, String, PathBuf, PathBuf, Option<PathBuf>) {
+fn init(
+    args: &ArgMatches,
+    logger: &mut BuildLogger,
+) -> (PathBuf, String, PathBuf, PathBuf, Option<PathBuf>) {
     let current_exe = std::env::current_exe().unwrap();
     let current_dir = std::env::current_dir().unwrap();
     let buildpack_dir = current_exe
@@ -232,7 +259,7 @@ fn init(args: &ArgMatches) -> (PathBuf, String, PathBuf, PathBuf, Option<PathBuf
         .unwrap();
     let bp_toml = read_file_to_string(buildpack_dir.join("buildpack.toml")).unwrap();
 
-    let app_dir = match args.value_of("path") {
+    let app_dir = match args.value_of("source") {
         None => current_dir
             .ancestors()
             .find(|a| a.join("app.toml").is_file())
@@ -241,29 +268,52 @@ fn init(args: &ArgMatches) -> (PathBuf, String, PathBuf, PathBuf, Option<PathBuf
     }
     .unwrap();
 
-    let env_dir = match args.value_of("env") {
-        None => current_dir,
-        Some(s) => PathBuf::from(s),
+    let platform_dir = match args.value_of("env") {
+        Some(s) => {
+            // Heroku-style env dir given.  Add links to simulate CNB style platform dir.
+            let target_env_dir = PathBuf::from(s);
+            let platform_dir = buildpack_dir.clone();
+            let platform_env_dir = platform_dir.join("env");
+            if platform_env_dir.exists() {
+                logger
+                    .debug("Existing platform env dir/link found in buildpack directory.")
+                    .unwrap();
+            } else {
+                logger
+                    .debug(format!(
+                        "Linking {} to {}.",
+                        platform_env_dir.to_string_lossy(),
+                        target_env_dir.to_string_lossy()
+                    ))
+                    .unwrap();
+                std::os::unix::fs::symlink(target_env_dir, platform_env_dir).unwrap();
+            }
+            platform_dir
+        }
+        None => match args.value_of("platform") {
+            Some(s) => PathBuf::from(s),
+            None => current_dir.clone(),
+        },
     };
 
     let layers_dir = match args.value_of("layers") {
         None => None,
         Some(s) => Some(PathBuf::from(s)),
     };
-    (buildpack_dir, bp_toml, app_dir, env_dir, layers_dir)
+    (buildpack_dir, bp_toml, app_dir, platform_dir, layers_dir)
 }
 
 fn detect(args: &ArgMatches) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
     logger.header("Pack Detect")?;
 
-    let (buildpack_dir, bp_toml, app_dir, env_dir, _layers_dir) = init(args);
+    let (buildpack_dir, bp_toml, app_dir, platform_dir, _layers_dir) = init(args, &mut logger);
 
     let context = DetectContext {
         app_dir: app_dir.to_owned(),
         buildpack_dir: buildpack_dir.to_owned(),
         stack_id: "".to_string(),
-        platform: GenericPlatform::from_path(env_dir).unwrap(),
+        platform: GenericPlatform::from_path(platform_dir).unwrap(),
         buildpack_descriptor: toml::from_str(bp_toml.as_str()).unwrap(),
     };
 
@@ -290,7 +340,7 @@ fn build(args: &ArgMatches) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
     logger.header("Pack Build")?;
 
-    let (buildpack_dir, bp_toml, app_dir, env_dir, layers_dir) = init(args);
+    let (buildpack_dir, bp_toml, app_dir, platform_dir, layers_dir) = init(args, &mut logger);
 
     let context = BuildContext {
         layers_dir: match layers_dir {
@@ -300,7 +350,7 @@ fn build(args: &ArgMatches) -> Result<(), anyhow::Error> {
         app_dir: app_dir.to_owned(),
         buildpack_dir: buildpack_dir.to_owned(),
         stack_id: "".to_string(),
-        platform: GenericPlatform::from_path(env_dir).unwrap(),
+        platform: GenericPlatform::from_path(platform_dir).unwrap(),
         buildpack_plan: BuildpackPlan {
             entries: Vec::<Entry>::new(),
         },
@@ -317,7 +367,7 @@ fn test(args: &ArgMatches) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
     logger.header("Pack Test")?;
 
-    let (buildpack_dir, bp_toml, app_dir, env_dir, layers_dir) = init(args);
+    let (buildpack_dir, bp_toml, app_dir, platform_dir, layers_dir) = init(args, &mut logger);
 
     let context = TestContext {
         layers_dir: match layers_dir {
@@ -327,7 +377,7 @@ fn test(args: &ArgMatches) -> Result<(), anyhow::Error> {
         app_dir: app_dir.to_owned(),
         buildpack_dir: buildpack_dir.to_owned(),
         stack_id: "".to_string(),
-        platform: GenericPlatform::from_path(env_dir).unwrap(),
+        platform: GenericPlatform::from_path(platform_dir).unwrap(),
         buildpack_descriptor: toml::from_str(bp_toml.as_str()).unwrap(),
     };
 
@@ -355,13 +405,13 @@ fn publish(args: &ArgMatches) -> Result<(), anyhow::Error> {
     let mut logger = BuildLogger::new(true, false);
     logger.header("Pack Publish")?;
 
-    let (buildpack_dir, bp_toml, app_dir, env_dir, _layers_dir) = init(args);
+    let (buildpack_dir, bp_toml, app_dir, platform_dir, _layers_dir) = init(args, &mut logger);
 
     let context = PublishContext {
         app_dir: app_dir.to_owned(),
         buildpack_dir: buildpack_dir.to_owned(),
         stack_id: "".to_string(),
-        platform: GenericPlatform::from_path(env_dir).unwrap(),
+        platform: GenericPlatform::from_path(platform_dir).unwrap(),
         buildpack_descriptor: toml::from_str(bp_toml.as_str()).unwrap(),
     };
 

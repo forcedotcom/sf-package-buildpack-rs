@@ -2,7 +2,6 @@ pub use base::*;
 pub use build::*;
 pub use cli::*;
 pub use detect::*;
-pub use layers::sfdx::*;
 pub use publish::*;
 pub use test::*;
 pub use util::config::SFPackageBuildpackConfig;

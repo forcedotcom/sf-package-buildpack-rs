@@ -2,7 +2,8 @@ use json::JsonValue;
 use libcnb::read_file_to_string;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::ffi::OsStr;
+use std::env;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use toml::value::Table;
 
@@ -495,5 +496,40 @@ mod tests {
 
         let dirs = config::read_package_directories(&app_dir, false, false).unwrap();
         assert_eq!(dirs.len(), 7);
+    }
+}
+
+#[test]
+fn test_append_env_path() {
+    let bin = PathBuf::from("./sfdx/test_append_env_path/bin");
+    let bin2 = bin.clone();
+
+    let mut path = env::var_os("PATH").unwrap_or(OsString::from(""));
+    let mut paths = env::split_paths(&path).collect::<Vec<_>>();
+    assert!(!paths.contains(&bin));
+
+    append_local_env_path(bin);
+
+    path = env::var_os("PATH").unwrap();
+    paths = env::split_paths(&path).collect::<Vec<_>>();
+    assert!(paths.contains(&bin2));
+    let len1 = path.len();
+
+    append_local_env_path(bin2);
+    path = env::var_os("PATH").unwrap();
+    let len2 = path.len();
+    assert_eq!(
+        len1, len2,
+        "Adding path segment twice should not add to path var"
+    );
+}
+
+pub fn append_local_env_path(bin: PathBuf) {
+    let path = env::var_os("PATH").unwrap_or(OsString::from(""));
+    let mut paths = env::split_paths(&path).collect::<Vec<_>>();
+    if !paths.contains(&bin) {
+        paths.push(bin);
+        let new_path = env::join_paths(paths).unwrap();
+        env::set_var("PATH", &new_path);
     }
 }

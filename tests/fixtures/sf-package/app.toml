@@ -4,7 +4,7 @@ hub_key_path = "assets/hub.key.enc"
 hub_user = "mhoefer@mphhub.org"
 hub_alias = "hub"
 hub_instance_url = "https://mphhub-dev-ed.my.salesforce.com"
-org_def_path = "config/project-scratch-def.json"
+org_def_path = "configgy/project-scratch-def.json"
 op_wait_seconds = 120
 
 [package]
