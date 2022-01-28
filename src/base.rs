@@ -339,7 +339,7 @@ pub fn sfdx_auth(
                 logger.info(format!("---> found SFDX_AUTH_URL {}", s))?;
                 Ok(Some(p))
             }
-            Err(_) => Err(anyhow!("No auth url or urlfile provided")),
+            Err(_) => Ok(None),
         },
     }?;
 
