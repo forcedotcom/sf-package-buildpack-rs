@@ -259,9 +259,9 @@ pub fn sfdx_auth(
 
     // Exit early if we are already authenticated.
     if env.var("SFDX_AUTH_FORCE").is_ok() {
-        logger.info("re-authenticating hub")?;
+        logger.info("---> re-authenticating hub")?;
     } else if let Some(OrgStatus::Connected) = sfdx_check_org(layers_dir, app_dir, user_name) {
-        logger.info("Hub already authenticated")?;
+        logger.info("---> hub already authenticated")?;
         return Ok(());
     }
 
@@ -270,21 +270,24 @@ pub fn sfdx_auth(
             // Try the KEYFILE var first
             let p = PathBuf::from(s);
             if p.is_file() {
-                logger.info(format!("found SFDX_AUTH_KEYFILE {}", p.to_str().unwrap()))?;
-                Ok(p)
+                logger.info(format!(
+                    "---> found SFDX_AUTH_KEYFILE {}",
+                    p.to_str().unwrap()
+                ))?;
+                Ok(Some(p))
             } else {
                 Err(anyhow!("Location given but no such file exists"))
             }
         }
         Err(_) => match env.var("SFDX_AUTH_ENC_KEYFILE") {
             Ok(s) => {
-                // Try the ENC_KEYFILE var next
                 let p = PathBuf::from(s);
                 logger.info(format!(
-                    "found SFDX_AUTH_ENC_KEYFILE {}",
+                    "---> found SFDX_AUTH_ENC_KEYFILE {}",
                     p.to_str().unwrap()
                 ))?;
-                decrypt_key(layers_dir, &mut logger, p, env)
+                let decrypted_file = decrypt_key(layers_dir, &mut logger, p, env)?;
+                Ok(Some(decrypted_file))
             }
             Err(_) => {
                 // Lastly, try the configured key file value
@@ -292,21 +295,29 @@ pub fn sfdx_auth(
                 if p.is_relative() {
                     p = app_dir.join(p);
                 }
-                logger.info(format!(
-                    "trying key_path app config value {}",
-                    p.to_str().unwrap()
-                ))?;
-                decrypt_key(layers_dir, &mut logger, p, env)
+                if p.is_file() {
+                    logger.info(format!(
+                        "---> found file with key_path app config value {}",
+                        p.to_str().unwrap()
+                    ))?;
+                    let decrypted_file = decrypt_key(layers_dir, &mut logger, p, env)?;
+                    Ok(Some(decrypted_file))
+                } else {
+                    Ok(None)
+                }
             }
         },
-    };
+    }?;
 
     let url_file = match env.var("SFDX_AUTH_URLFILE") {
         Ok(s) => {
             let p = PathBuf::from(s);
             if p.is_file() {
-                logger.info(format!("found SFDX_AUTH_URLFILE {}", p.to_str().unwrap()))?;
-                Ok(p)
+                logger.info(format!(
+                    "---> found SFDX_AUTH_URLFILE {}",
+                    p.to_str().unwrap()
+                ))?;
+                Ok(Some(p))
             } else {
                 // Location given but no such file exists
                 Err(anyhow!("Location given but no such file exists"))
@@ -316,20 +327,15 @@ pub fn sfdx_auth(
             Ok(s) => {
                 let p = layers_dir.join("sfdx").join(".sfdx_auth_url");
                 write_file(s.as_bytes(), &p);
-                logger.info(format!("found SFDX_AUTH_URL {}", s))?;
-                Ok(p)
+                logger.info(format!("---> found SFDX_AUTH_URL {}", s))?;
+                Ok(Some(p))
             }
             Err(_) => Err(anyhow!("No auth url or urlfile provided")),
         },
-    };
+    }?;
 
-    let access_token = env.var("SFDX_ACCESS_TOKEN");
-    if access_token.is_ok() {
-        logger.info("found SFDX_ACCESS_TOKEN")?;
-    }
-
-    if let Ok(key_file) = key_file {
-        logger.info("authenticating hub with key")?;
+    if let Some(key_file) = key_file {
+        logger.info("---> authenticating hub with key")?;
         let mut cmd = sfdx(layers_dir);
         cmd.current_dir(app_dir)
             .arg("auth:jwt:grant")
@@ -343,7 +349,7 @@ pub fn sfdx_auth(
             .arg(instance_url)
             .arg("--setdefaultdevhubusername");
         if let Some(s) = alias {
-            logger.info(format!("using alias {}", &s))?;
+            logger.info(format!("---> using alias {}", &s))?;
             cmd.arg("--setalias").arg(s);
         }
         match cmd.output() {
@@ -353,8 +359,8 @@ pub fn sfdx_auth(
             }
             Err(e) => Err(anyhow::Error::new(e)),
         }
-    } else if let Ok(url_file) = url_file {
-        logger.info("authenticating hub with url")?;
+    } else if let Some(url_file) = url_file {
+        logger.info("---> authenticating hub with url")?;
         let mut cmd = sfdx(layers_dir);
         match cmd
             .current_dir(app_dir)
@@ -370,8 +376,8 @@ pub fn sfdx_auth(
             }
             Err(e) => Err(anyhow::Error::new(e)),
         }
-    } else if let Ok(access_token) = access_token {
-        logger.info("authenticating hub with token")?;
+    } else if let Ok(access_token) = env.var("SFDX_ACCESS_TOKEN") {
+        logger.info("---> authenticating hub with SFDX_ACCESS_TOKEN")?;
         let mut cmd = sfdx(layers_dir);
         match cmd
             .current_dir(app_dir)
@@ -403,13 +409,13 @@ fn decrypt_key(
 ) -> Result<PathBuf, anyhow::Error> {
     let enc_file = EncFile::new(p, env.var("OPENSSL_ENC_KEY")?, env.var("OPENSSL_ENC_IV")?);
     if enc_file.is_ok() {
-        logger.info("found SFDX_AUTH_ENC_KEYFILE, OPENSSL_ENC_KEY and OPENSSL_ENC_IV")?;
+        logger.info("---> found SFDX_AUTH_ENC_KEYFILE, OPENSSL_ENC_KEY and OPENSSL_ENC_IV")?;
         let sfdx_dir = layers_dir.join("sfdx");
         fs::create_dir_all(&sfdx_dir)?;
         let target_file = sfdx_dir.join(".sfdx_auth_key");
         decrypt(&enc_file.unwrap(), &target_file)?;
         logger.info(format!(
-            "Decrypted file to {}",
+            "---> decrypted file to {}",
             &target_file.to_str().unwrap()
         ))?;
         Ok(target_file)
@@ -430,7 +436,7 @@ pub fn sfdx_create_org_if_needed(
     let created = match sfdx_check_org(layers_dir, app_dir, scratch_org_alias) {
         Some(OrgStatus::Active) => false,
         _ => {
-            logger.info("---> Creating scratch org")?;
+            logger.info("---> creating scratch org")?;
             let output = sfdx_create_org(
                 layers_dir,
                 app_dir,
