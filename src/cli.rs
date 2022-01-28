@@ -480,7 +480,7 @@ fn read_enc(m: &ArgMatches, source_file: PathBuf) -> Result<EncFile, Error> {
             }
         },
     };
-    let enc_file = EncFile::new(source_file, ssl_key, ssl_iv);
+    let enc_file = EncFile::new(&source_file, ssl_key, ssl_iv);
     enc_file
 }
 

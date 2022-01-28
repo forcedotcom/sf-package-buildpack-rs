@@ -13,7 +13,7 @@ pub struct EncFile {
 }
 
 impl EncFile {
-    pub fn new(file: PathBuf, key: String, iv: String) -> Result<Self, anyhow::Error> {
+    pub fn new(file: &PathBuf, key: String, iv: String) -> Result<Self, anyhow::Error> {
         if !file.is_file() {
             Err(anyhow!(
                 "Encrypted file {} not found",
@@ -23,7 +23,7 @@ impl EncFile {
             Ok(EncFile {
                 key,
                 iv,
-                file,
+                file: file.to_path_buf(),
                 cipher: Cipher::aes_256_cbc(),
             })
         }
@@ -35,7 +35,7 @@ impl EncFile {
         if key.is_err() || iv.is_err() {
             Err(anyhow!("OPENSSL_ENC_KEY and OPENSSL_ENC_IV are required for encrypting and decrypting files"))
         } else {
-            EncFile::new(file, key.unwrap(), iv.unwrap())
+            EncFile::new(&file, key.unwrap(), iv.unwrap())
         }
     }
 }

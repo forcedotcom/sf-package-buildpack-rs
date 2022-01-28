@@ -268,7 +268,10 @@ pub fn sfdx_auth(
     let key_file = match env.var("SFDX_AUTH_KEYFILE") {
         Ok(s) => {
             // Try the KEYFILE var first
-            let p = PathBuf::from(s);
+            let mut p = PathBuf::from(s);
+            if p.is_relative() {
+                p = app_dir.join(p);
+            }
             if p.is_file() {
                 logger.info(format!(
                     "---> found SFDX_AUTH_KEYFILE {}",
@@ -281,12 +284,15 @@ pub fn sfdx_auth(
         }
         Err(_) => match env.var("SFDX_AUTH_ENC_KEYFILE") {
             Ok(s) => {
-                let p = PathBuf::from(s);
+                let mut p = PathBuf::from(s);
+                if p.is_relative() {
+                    p = app_dir.join(p);
+                }
                 logger.info(format!(
                     "---> found SFDX_AUTH_ENC_KEYFILE {}",
                     p.to_str().unwrap()
                 ))?;
-                let decrypted_file = decrypt_key(layers_dir, &mut logger, p, env)?;
+                let decrypted_file = decrypt_key(layers_dir, &mut logger, &p, env)?;
                 Ok(Some(decrypted_file))
             }
             Err(_) => {
@@ -300,7 +306,7 @@ pub fn sfdx_auth(
                         "---> found file with key_path app config value {}",
                         p.to_str().unwrap()
                     ))?;
-                    let decrypted_file = decrypt_key(layers_dir, &mut logger, p, env)?;
+                    let decrypted_file = decrypt_key(layers_dir, &mut logger, &p, env)?;
                     Ok(Some(decrypted_file))
                 } else {
                     Ok(None)
@@ -311,7 +317,10 @@ pub fn sfdx_auth(
 
     let url_file = match env.var("SFDX_AUTH_URLFILE") {
         Ok(s) => {
-            let p = PathBuf::from(s);
+            let mut p = PathBuf::from(s);
+            if p.is_relative() {
+                p = app_dir.join(p);
+            }
             if p.is_file() {
                 logger.info(format!(
                     "---> found SFDX_AUTH_URLFILE {}",
@@ -404,7 +413,7 @@ pub fn sfdx_auth(
 fn decrypt_key(
     layers_dir: &PathBuf,
     logger: &mut BuildLogger,
-    p: PathBuf,
+    p: &PathBuf,
     env: &PlatformEnv,
 ) -> Result<PathBuf, anyhow::Error> {
     let enc_file = EncFile::new(p, env.var("OPENSSL_ENC_KEY")?, env.var("OPENSSL_ENC_IV")?);
@@ -420,7 +429,10 @@ fn decrypt_key(
         ))?;
         Ok(target_file)
     } else {
-        Err(anyhow!("Location given but no such file exists"))
+        Err(anyhow!(format!(
+            "Location given for {} but no such file exists",
+            p.to_str().unwrap()
+        )))
     }
 }
 
